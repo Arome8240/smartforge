@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import app from "./app";
 import { connectDatabase } from "./config/database";
+import { log } from "./utils/logger";
 
 dotenv.config();
 
@@ -13,10 +14,10 @@ async function startServer() {
 
     // Start server
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      log.success(`🚀 Server running on http://localhost:${PORT}`);
     });
   } catch (error) {
-    console.error("Failed to start server:", error);
+    log.error(`Failed to start server: ${error}`);
     process.exit(1);
   }
 }

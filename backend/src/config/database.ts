@@ -1,14 +1,16 @@
 import mongoose from "mongoose";
+import { log } from "../utils/logger";
 
 export async function connectDatabase() {
   const mongoUri =
-    process.env.MONGODB_URI || "mongodb://localhost:27017/smartforge";
+    process.env.MONGODB_URI ||
+    "mongodb+srv://voiceoftruth:votarkinen@cluster0.iy5o3.mongodb.net/?appName=Cluster0";
 
   try {
     await mongoose.connect(mongoUri);
-    console.log("✅ Connected to MongoDB");
+    log.success("✅ Connected to MongoDB");
   } catch (error) {
-    console.error("❌ MongoDB connection error:", error);
+    log.error(`❌ MongoDB connection error: ${error}`);
     throw error;
   }
 }

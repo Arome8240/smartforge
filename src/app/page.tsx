@@ -30,24 +30,36 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjects, useCreateProject } from "@/hooks/use-projects";
+import { useLogout } from "@/hooks/use-auth";
 import { ProjectTemplate } from "@/schemas/project.schema";
-import { Plus, Code2, FileCode, Sparkles } from "lucide-react";
+import { Plus, Code2, FileCode, Sparkles, LogOut, User } from "lucide-react";
 import Link from "next/link";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { toast } from "@/hooks/use-toast";
 
 export default function HomePage() {
   const { ready, authenticated, user, login } = usePrivy();
   const router = useRouter();
   const { data: projects, isLoading } = useProjects();
   const createProject = useCreateProject();
+  const logout = useLogout();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [template, setTemplate] = useState<ProjectTemplate>("Custom");
 
-  useEffect(() => {
-    if (ready && !authenticated) {
-      router.push("/login");
-    }
-  }, [ready, authenticated, router]);
+  // useEffect(() => {
+  //   if (ready && !authenticated) {
+  //     router.push("/login");
+  //   }
+  // }, [ready, authenticated, router]);
 
   const handleCreateProject = async () => {
     if (!projectName.trim() || !user?.wallet?.address) return;
@@ -65,6 +77,28 @@ export default function HomePage() {
     } catch (error) {
       console.error("Failed to create project:", error);
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
+      router.push("/login");
+    } catch (error) {
+      toast({
+        title: "Logout failed",
+        description: "Failed to log out. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getWalletShortAddress = (address?: string) => {
+    if (!address) return "";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   if (!ready) {
@@ -101,78 +135,127 @@ export default function HomePage() {
               Create and manage your smart contracts
             </p>
           </div>
-          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                <Plus className="w-4 h-4 mr-2" />
-                Create New Project
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Create New Project</DialogTitle>
-                <DialogDescription>
-                  Choose a template to get started with your smart contract.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Project Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="My Awesome Contract"
-                    value={projectName}
-                    onChange={(e) => setProjectName(e.target.value)}
-                  />
+          <div className="flex items-center gap-3">
+            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create New Project
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Create New Project</DialogTitle>
+                  <DialogDescription>
+                    Choose a template to get started with your smart contract.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Project Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="My Awesome Contract"
+                      value={projectName}
+                      onChange={(e) => setProjectName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="template">Template</Label>
+                    <Select
+                      value={template}
+                      onValueChange={(value) =>
+                        setTemplate(value as ProjectTemplate)
+                      }
+                    >
+                      <SelectTrigger id="template">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ERC20">
+                          <div className="flex items-center gap-2">
+                            <FileCode className="w-4 h-4" />
+                            ERC20 Token
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="ERC721">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4" />
+                            ERC721 NFT
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="Custom">
+                          <div className="flex items-center gap-2">
+                            <Code2 className="w-4 h-4" />
+                            Custom Contract
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="template">Template</Label>
-                  <Select
-                    value={template}
-                    onValueChange={(value) =>
-                      setTemplate(value as ProjectTemplate)
-                    }
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsModalOpen(false)}
                   >
-                    <SelectTrigger id="template">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ERC20">
-                        <div className="flex items-center gap-2">
-                          <FileCode className="w-4 h-4" />
-                          ERC20 Token
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="ERC721">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="w-4 h-4" />
-                          ERC721 NFT
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="Custom">
-                        <div className="flex items-center gap-2">
-                          <Code2 className="w-4 h-4" />
-                          Custom Contract
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreateProject}
+                    disabled={!projectName.trim() || createProject.isPending}
+                    className="bg-primary text-primary-foreground"
+                  >
+                    {createProject.isPending ? "Creating..." : "Create Project"}
+                  </Button>
                 </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsModalOpen(false)}>
-                  Cancel
-                </Button>
+              </DialogContent>
+            </Dialog>
+
+            {/* User Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
-                  onClick={handleCreateProject}
-                  disabled={!projectName.trim() || createProject.isPending}
-                  className="bg-primary text-primary-foreground"
+                  variant="ghost"
+                  className="flex items-center gap-2 h-10 px-3"
                 >
-                  {createProject.isPending ? "Creating..." : "Create Project"}
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-primary/20 text-primary">
+                      <User className="w-4 h-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium text-foreground">
+                    {getWalletShortAddress(user?.wallet?.address)}
+                  </span>
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">My Account</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {user?.wallet?.address}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/pricing" className="cursor-pointer">
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Pricing
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="cursor-pointer text-destructive focus:text-destructive"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Projects Grid */}
@@ -195,7 +278,7 @@ export default function HomePage() {
             {projects.map((project) => {
               const Icon = templateIcons[project.template];
               return (
-                <Link key={project.id} href={`/project/${project.id}/editor`}>
+                <Link key={project.id} href={`/project/${project._id}/editor`}>
                   <Card className="border-primary/20 bg-card/50 hover:border-primary/40 hover:bg-card/80 transition-all cursor-pointer h-full">
                     <CardHeader>
                       <div className="flex items-start justify-between">

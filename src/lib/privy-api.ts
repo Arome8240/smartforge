@@ -1,5 +1,6 @@
 import { usePrivy } from "@privy-io/react-auth";
 import axios, { AxiosInstance } from "axios";
+import { toast } from "sonner";
 
 export function createPrivyApiClient(
   getAccessToken: () => Promise<string | null>
@@ -27,7 +28,10 @@ export function createPrivyApiClient(
       if (error.response?.status === 401) {
         // Handle unauthorized - Privy will handle re-authentication
         if (typeof window !== "undefined") {
-          window.location.href = "/login";
+          toast.error(
+            error.response.data.error || "Unauthorized. Please log in again."
+          );
+          //window.location.href = "/login";
         }
       }
       return Promise.reject(error);

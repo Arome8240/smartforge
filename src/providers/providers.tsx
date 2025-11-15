@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PrivyAuthProvider } from "./privy-provider";
+import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <PrivyAuthProvider>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <Toaster position="bottom-right" richColors theme="dark" />
     </PrivyAuthProvider>
   );
 }

@@ -3,6 +3,7 @@ import { Project } from "../models/Project";
 import { User } from "../models/User";
 import { AuthRequest } from "../middleware/auth";
 import { CONTRACT_TEMPLATES } from "../services/contract-templates";
+import { log } from "../utils/logger";
 
 export async function createProject(req: AuthRequest, res: Response) {
   try {
@@ -37,13 +38,15 @@ export async function createProject(req: AuthRequest, res: Response) {
       template,
       owner: walletAddress,
       sourceCode:
-        sourceCode || CONTRACT_TEMPLATES[template] || CONTRACT_TEMPLATES.Custom,
+        sourceCode ||
+        CONTRACT_TEMPLATES[template as keyof typeof CONTRACT_TEMPLATES] ||
+        CONTRACT_TEMPLATES.Custom,
       deploymentStatus: "draft",
     });
 
     res.status(201).json(project);
   } catch (error: any) {
-    console.error("Create project error:", error);
+    log.error(`Create project error: ${error.message || error}`);
     res
       .status(500)
       .json({ error: error.message || "Failed to create project" });
@@ -59,7 +62,7 @@ export async function getProjects(req: AuthRequest, res: Response) {
 
     res.json(projects);
   } catch (error: any) {
-    console.error("Get projects error:", error);
+    log.error(`Get projects error: ${error.message || error}`);
     res
       .status(500)
       .json({ error: error.message || "Failed to fetch projects" });
@@ -78,7 +81,7 @@ export async function getProject(req: AuthRequest, res: Response) {
 
     res.json(project);
   } catch (error: any) {
-    console.error("Get project error:", error);
+    log.error(`Get project error: ${error.message || error}`);
     res.status(500).json({ error: error.message || "Failed to fetch project" });
   }
 }
@@ -101,7 +104,7 @@ export async function updateProject(req: AuthRequest, res: Response) {
 
     res.json(project);
   } catch (error: any) {
-    console.error("Update project error:", error);
+    log.error(`Update project error: ${error.message || error}`);
     res
       .status(500)
       .json({ error: error.message || "Failed to update project" });
@@ -123,7 +126,7 @@ export async function deleteProject(req: AuthRequest, res: Response) {
 
     res.json({ message: "Project deleted successfully" });
   } catch (error: any) {
-    console.error("Delete project error:", error);
+    log.error(`Delete project error: ${error.message || error}`);
     res
       .status(500)
       .json({ error: error.message || "Failed to delete project" });
@@ -155,7 +158,7 @@ export async function deployProject(req: AuthRequest, res: Response) {
 
     res.json({ message: "Deployment started", project });
   } catch (error: any) {
-    console.error("Deploy project error:", error);
+    log.error(`Deploy project error: ${error.message || error}`);
     res
       .status(500)
       .json({ error: error.message || "Failed to deploy project" });

@@ -2,7 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,26 +12,54 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Wallet } from "lucide-react";
+import { useLogin } from "@/hooks/use-auth";
+import { toast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
-  const { ready, authenticated, login } = usePrivy();
+  const { ready, authenticated, login: privyLogin } = usePrivy();
   const router = useRouter();
+  const loginMutation = useLogin();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     if (ready && authenticated) {
-      router.push("/");
+      // After Privy authentication, call backend login
+      handleBackendLogin();
     }
-  }, [ready, authenticated, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, authenticated]);
 
-  const handleLogin = async () => {
+  const handleBackendLogin = async () => {
+    if (!authenticated) return;
+
     try {
-      await login();
-    } catch (error) {
-      console.error("Login failed:", error);
+      setIsLoggingIn(true);
+      await loginMutation.mutateAsync();
+      toast({
+        title: "Welcome!",
+        description: "Successfully logged in.",
+      });
+      router.push("/");
+    } catch (error: any) {
+      toast({
+        title: "Login Error",
+        description: error.response?.data?.error || "Failed to complete login",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  if (ready && authenticated) {
+  const handleLogin = async () => {
+    try {
+      await privyLogin();
+    } catch (error) {
+      console.error("Privy login failed:", error);
+    }
+  };
+
+  if (ready && authenticated && !isLoggingIn) {
     return null;
   }
 
