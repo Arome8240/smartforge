@@ -1,0 +1,26 @@
+{
+  "name": "smartforge-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@privy-io/node": "^0.5.0",
+    "@privy-io/server-auth": "^1.32.5",
+    "cors": "*",
+    "dotenv": "*",
+    "express": "*",
+    "mongoose": "*",
+    "zod": "*"
+  },
+  "devDependencies": {
+    "@types/cors": "*",
+    "@types/express": "*",
+    "@types/node": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}

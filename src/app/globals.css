@@ -1,26 +1,158 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Applied dark neon theme with electric blue and neon purple */
+  --neon-blue: #00cfff;
+  --neon-purple: #a259ff;
+  --background: #0a0a0f;
+  --foreground: #eef2ff;
+  --card: #151520;
+  --card-foreground: #eef2ff;
+  --popover: #151520;
+  --popover-foreground: #eef2ff;
+  --primary: #00cfff;
+  --primary-foreground: #0a0a0f;
+  --secondary: #a259ff;
+  --secondary-foreground: #eef2ff;
+  --muted: #2a2a35;
+  --muted-foreground: #9ca3af;
+  --accent: #00cfff;
+  --accent-foreground: #0a0a0f;
+  --destructive: #ff4444;
+  --destructive-foreground: #eef2ff;
+  --border: #2a2a35;
+  --input: #1a1a25;
+  --ring: #00cfff;
+  --chart-1: #00cfff;
+  --chart-2: #a259ff;
+  --chart-3: #00ff88;
+  --chart-4: #ff0088;
+  --chart-5: #ffaa00;
+  --radius: 0.625rem;
+  --sidebar: #0f0f15;
+  --sidebar-foreground: #eef2ff;
+  --sidebar-primary: #00cfff;
+  --sidebar-primary-foreground: #0a0a0f;
+  --sidebar-accent: #a259ff;
+  --sidebar-accent-foreground: #eef2ff;
+  --sidebar-border: #2a2a35;
+  --sidebar-ring: #00cfff;
+}
+
+.dark {
+  /* Dark mode is the only mode, keeping all neon values */
+  --neon-blue: #00cfff;
+  --neon-purple: #a259ff;
+  --background: #0a0a0f;
+  --foreground: #eef2ff;
+  --card: #151520;
+  --card-foreground: #eef2ff;
+  --popover: #151520;
+  --popover-foreground: #eef2ff;
+  --primary: #00cfff;
+  --primary-foreground: #0a0a0f;
+  --secondary: #a259ff;
+  --secondary-foreground: #eef2ff;
+  --muted: #2a2a35;
+  --muted-foreground: #9ca3af;
+  --accent: #00cfff;
+  --accent-foreground: #0a0a0f;
+  --destructive: #ff4444;
+  --destructive-foreground: #eef2ff;
+  --border: #2a2a35;
+  --input: #1a1a25;
+  --ring: #00cfff;
+  --chart-1: #00cfff;
+  --chart-2: #a259ff;
+  --chart-3: #00ff88;
+  --chart-4: #ff0088;
+  --chart-5: #ffaa00;
+  --sidebar: #0f0f15;
+  --sidebar-foreground: #eef2ff;
+  --sidebar-primary: #00cfff;
+  --sidebar-primary-foreground: #0a0a0f;
+  --sidebar-accent: #a259ff;
+  --sidebar-accent-foreground: #eef2ff;
+  --sidebar-border: #2a2a35;
+  --sidebar-ring: #00cfff;
 }
 
 @theme inline {
+  /* Added Rogan font as primary font family */
+  --font-sans: 'Rogan', 'Inter', sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  /* Added neon glow effects for interactive elements */
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  /* Neon glow effect for focused and interactive elements */
+  button:focus, input:focus, [role="button"]:focus {
+    @apply ring-2 ring-primary shadow-lg;
+    box-shadow: 0 0 20px rgba(0, 207, 255, 0.3);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Custom neon border animation */
+@keyframes neon-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 207, 255, 0.5), 0 0 10px rgba(0, 207, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(0, 207, 255, 0.8), 0 0 25px rgba(0, 207, 255, 0.5);
+  }
+}
+
+.neon-border {
+  border: 1px solid var(--neon-blue);
+  box-shadow: 0 0 10px rgba(0, 207, 255, 0.3);
+}
+
+.neon-glow {
+  animation: neon-glow 2s ease-in-out infinite;
 }
