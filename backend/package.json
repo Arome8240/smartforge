@@ -16,7 +16,9 @@
     "express": "*",
     "mongoose": "*",
     "morgan": "^1.10.1",
-    "zod": "*"
+    "zod": "*",
+    "ethers": "^6.13.1",
+    "solc": "^0.8.26"
   },
   "devDependencies": {
     "@types/cors": "*",

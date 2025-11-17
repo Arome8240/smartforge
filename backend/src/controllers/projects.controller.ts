@@ -4,6 +4,7 @@ import { User } from "../models/User";
 import { AuthRequest } from "../middleware/auth";
 import { CONTRACT_TEMPLATES } from "../services/contract-templates";
 import { log } from "../utils/logger";
+import { deployToBaseSepolia } from "../services/deployment";
 
 export async function createProject(req: AuthRequest, res: Response) {
   try {
@@ -147,14 +148,30 @@ export async function deployProject(req: AuthRequest, res: Response) {
     project.deploymentStatus = "deploying";
     await project.save();
 
-    // TODO: Implement actual gasless deployment
-    // For now, simulate deployment
-    setTimeout(async () => {
-      project.deploymentStatus = "deployed";
-      project.deployedAddress = `0x${Math.random().toString(16).substr(2, 40)}`;
-      project.deployedNetwork = "sepolia";
-      await project.save();
-    }, 5000);
+    // Kick off real deployment to Base Sepolia (non-blocking)
+    (async () => {
+      try {
+        const { address, abi, network, txHash } = await deployToBaseSepolia(
+          project.sourceCode || ""
+        );
+
+        project.deploymentStatus = "deployed";
+        project.deployedAddress = address;
+        project.deployedNetwork = network;
+        project.abi = abi;
+        await project.save();
+
+        log.success(
+          `Project ${project._id} deployed to ${network} at ${address} (tx: ${txHash})`
+        );
+      } catch (err: any) {
+        log.error(
+          `Deployment failed for project ${project._id}: ${err?.message || err}`
+        );
+        project.deploymentStatus = "failed";
+        await project.save();
+      }
+    })();
 
     res.json({ message: "Deployment started", project });
   } catch (error: any) {
