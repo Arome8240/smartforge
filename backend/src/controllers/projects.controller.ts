@@ -152,7 +152,8 @@ export async function deployProject(req: AuthRequest, res: Response) {
     (async () => {
       try {
         const { address, abi, network, txHash } = await deployToBaseSepolia(
-          project.sourceCode || ""
+          project.sourceCode || "",
+          project.owner
         );
 
         project.deploymentStatus = "deployed";

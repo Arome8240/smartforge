@@ -1,5 +1,5 @@
 import { log } from "../utils/logger";
-import { JsonRpcProvider, Wallet, ContractFactory } from "ethers";
+import { JsonRpcProvider, Wallet, ContractFactory, Contract } from "ethers";
 import solc from "solc";
 
 interface CompileResult {
@@ -58,7 +58,10 @@ function compileContract(sourceCode: string): CompileResult {
   };
 }
 
-export async function deployToBaseSepolia(sourceCode: string) {
+export async function deployToBaseSepolia(
+  sourceCode: string,
+  ownerAddress: string
+) {
   if (!sourceCode) {
     throw new Error("Project has no sourceCode to deploy");
   }
@@ -88,6 +91,38 @@ export async function deployToBaseSepolia(sourceCode: string) {
 
   await contract.waitForDeployment();
   const address = await contract.getAddress();
+
+  // Try to transfer ownership / set owner to the project owner address
+  try {
+    const instance = new Contract(address, abi, wallet);
+    const anyInstance = instance as any;
+
+    if (typeof anyInstance.transferOwnership === "function") {
+      log.info(
+        `Transferring ownership of ${contractName} at ${address} to ${ownerAddress}...`
+      );
+      const txOwn = await anyInstance.transferOwnership(ownerAddress);
+      await txOwn.wait();
+      log.success(`Ownership transferred to ${ownerAddress}`);
+    } else if (typeof anyInstance.setOwner === "function") {
+      log.info(
+        `Setting owner of ${contractName} at ${address} to ${ownerAddress}...`
+      );
+      const txOwn = await anyInstance.setOwner(ownerAddress);
+      await txOwn.wait();
+      log.success(`Owner set to ${ownerAddress}`);
+    } else {
+      log.info(
+        "Contract does not expose transferOwnership/setOwner; leaving deployer as owner."
+      );
+    }
+  } catch (ownershipErr: any) {
+    log.error(
+      `Failed to transfer ownership to ${ownerAddress}: ${
+        ownershipErr?.message || ownershipErr
+      }`
+    );
+  }
 
   log.success(
     `Deployed contract ${contractName} to ${address} on Base Sepolia. Tx: ${
