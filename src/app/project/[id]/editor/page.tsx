@@ -80,6 +80,40 @@ type DesignVariable = {
   visibility: "public" | "private" | "internal" | "external";
 };
 
+type FunctionStepRequire = {
+  id: string;
+  type: "require";
+  condition: string;
+  message: string;
+};
+
+type FunctionStepStatement = {
+  id: string;
+  type: "statement";
+  code: string;
+};
+
+type FunctionStepCall = {
+  id: string;
+  type: "call";
+  targetFunctionId: string;
+  args: string;
+};
+
+type FunctionStepMappingSet = {
+  id: string;
+  type: "setMapping";
+  mappingId: string;
+  keyExpr: string;
+  valueExpr: string;
+};
+
+type FunctionStep =
+  | FunctionStepRequire
+  | FunctionStepStatement
+  | FunctionStepCall
+  | FunctionStepMappingSet;
+
 type DesignFunction = {
   id: string;
   name: string;
@@ -87,6 +121,7 @@ type DesignFunction = {
   stateMutability?: "view" | "pure" | "payable" | "nonpayable" | "constant";
   inputs: ParsedFunctionParam[];
   outputs?: string;
+  steps?: FunctionStep[];
 };
 
 function buildDesignSection(
@@ -126,7 +161,7 @@ function buildDesignSection(
     mappings.forEach((m, index) => {
       const keyType = (m as any).keyType || "address";
       const valueType = (m as any).valueType || "uint256";
-      const varName = `mapping${index + 1}`;
+      const varName = (m as any).name || `mapping${index + 1}`;
       lines.push(`mapping(${keyType} => ${valueType}) public ${varName};`);
     });
     lines.push("");
@@ -155,7 +190,42 @@ function buildDesignSection(
       lines.push(
         `function ${fn.name}(${params}) ${visibility}${mutability}${returns} {`
       );
-      lines.push("    // TODO: add function logic");
+      const steps = fn.steps || [];
+      if (steps.length === 0) {
+        lines.push("    // TODO: add function logic");
+      } else {
+        for (const step of steps) {
+          if (step.type === "require") {
+            const msg =
+              step.message && step.message.trim().length > 0
+                ? `, "${step.message.replace(/"/g, '\\"')}"`
+                : "";
+            lines.push(`    require(${step.condition || "false"}${msg});`);
+          } else if (step.type === "statement") {
+            if (step.code.trim().length > 0) {
+              lines.push(`    ${step.code.trim()}`);
+            }
+          } else if (step.type === "call") {
+            const target = functions.find(
+              (f) => f.id === step.targetFunctionId
+            );
+            const targetName = target?.name || "/* unknownFunction */";
+            const args = step.args.trim();
+            lines.push(`    ${targetName}(${args.length > 0 ? args : ""});`);
+          } else if (step.type === "setMapping") {
+            const index = mappings.findIndex(
+              (m) => (m as any).id === step.mappingId
+            );
+            const varName =
+              index >= 0
+                ? (mappings[index] as any).name || `mapping${index + 1}`
+                : "/* mapping */";
+            const key = step.keyExpr.trim() || "/* key */";
+            const value = step.valueExpr.trim() || "/* value */";
+            lines.push(`    ${varName}[${key}] = ${value};`);
+          }
+        }
+      }
       lines.push("}");
       lines.push("");
     }
@@ -173,33 +243,62 @@ function applyDesignSectionToCode(
   const startMarker = "// === SMARTFORGE DESIGN START ===";
   const endMarker = "// === SMARTFORGE DESIGN END ===";
 
-  const startIndex = code.indexOf(startMarker);
+  // First, remove any existing SMARTFORGE section
+  let cleaned = code;
+  const existingStart = cleaned.indexOf(startMarker);
+  if (existingStart !== -1) {
+    const existingEnd = cleaned.indexOf(endMarker, existingStart);
+    if (existingEnd !== -1) {
+      const afterEnd = cleaned.indexOf("\n", existingEnd + endMarker.length);
+      cleaned =
+        cleaned.slice(0, existingStart) +
+        (afterEnd !== -1 ? cleaned.slice(afterEnd + 1) : "");
+    } else {
+      cleaned = cleaned.slice(0, existingStart);
+    }
+  }
 
   if (!section) {
-    if (startIndex === -1) return code;
-    const endIndex = code.indexOf(endMarker, startIndex);
-    if (endIndex === -1) {
-      return code.slice(0, startIndex);
+    return cleaned;
+  }
+
+  // Insert the section inside the first contract's braces if possible
+  const contractIndex = cleaned.indexOf("contract ");
+  if (contractIndex === -1) {
+    const sep = cleaned.endsWith("\n") ? "" : "\n";
+    return cleaned + sep + "\n" + section + "\n";
+  }
+
+  const openBraceIndex = cleaned.indexOf("{", contractIndex);
+  if (openBraceIndex === -1) {
+    const sep = cleaned.endsWith("\n") ? "" : "\n";
+    return cleaned + sep + "\n" + section + "\n";
+  }
+
+  // Find matching closing brace for the contract using a simple brace counter
+  let depth = 0;
+  let closeBraceIndex = -1;
+  for (let i = openBraceIndex; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        closeBraceIndex = i;
+        break;
+      }
     }
-    const afterEnd = code.indexOf("\n", endIndex + endMarker.length);
-    return (
-      code.slice(0, startIndex) +
-      (afterEnd !== -1 ? code.slice(afterEnd + 1) : "")
-    );
   }
 
-  if (startIndex === -1) {
-    const sep = code.endsWith("\n") ? "" : "\n";
-    return code + sep + "\n" + section + "\n";
+  if (closeBraceIndex === -1) {
+    const sep = cleaned.endsWith("\n") ? "" : "\n";
+    return cleaned + sep + "\n" + section + "\n";
   }
 
-  const endIndex = code.indexOf(endMarker, startIndex);
-  if (endIndex === -1) {
-    return code.slice(0, startIndex) + section + "\n";
-  }
-  const afterEnd = code.indexOf("\n", endIndex + endMarker.length);
-  const tail = afterEnd !== -1 ? code.slice(afterEnd + 1) : "";
-  return code.slice(0, startIndex) + section + "\n" + tail;
+  const before = cleaned.slice(0, closeBraceIndex);
+  const after = cleaned.slice(closeBraceIndex);
+  const sepBefore = before.endsWith("\n") ? "" : "\n";
+  return before + sepBefore + "\n" + section + "\n" + after;
 }
 
 function parseStructs(code: string): ParsedStruct[] {
@@ -303,6 +402,7 @@ export default function ProjectEditorPage() {
   const [sourceCode, setSourceCode] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [projectName, setProjectName] = useState("");
+  const [isWatchingDeployment, setIsWatchingDeployment] = useState(false);
 
   const [variables, setVariables] = useState<DesignVariable[]>([]);
   const [designStructs, setDesignStructs] = useState<Struct[]>([]);
@@ -337,6 +437,24 @@ export default function ProjectEditorPage() {
   }>({
     name: "",
   });
+
+  const [logicDialogFunctionId, setLogicDialogFunctionId] = useState<
+    string | null
+  >(null);
+  const [requireForm, setRequireForm] = useState<{
+    condition: string;
+    message: string;
+  }>({ condition: "", message: "" });
+  const [statementForm, setStatementForm] = useState<string>("");
+  const [mappingForm, setMappingForm] = useState<{
+    mappingId: string;
+    keyExpr: string;
+    valueExpr: string;
+  }>({ mappingId: "", keyExpr: "", valueExpr: "" });
+  const [callForm, setCallForm] = useState<{
+    targetFunctionId: string;
+    args: string;
+  }>({ targetFunctionId: "", args: "" });
 
   const parsedStructs = useMemo(
     () => (sourceCode ? parseStructs(sourceCode) : []),
@@ -433,12 +551,34 @@ export default function ProjectEditorPage() {
         description:
           "Your contract is being deployed with gasless transactions.",
       });
+      setIsWatchingDeployment(true);
     } catch (error) {
       toast.error("Deployment Failed", {
         description: "Failed to deploy contract. Please try again.",
       });
     }
   };
+
+  useEffect(() => {
+    if (!isWatchingDeployment || !project) return;
+
+    if (project.deploymentStatus === "deployed") {
+      toast.success("Deployment Successful", {
+        description: project.deployedAddress
+          ? `Contract deployed to ${
+              project.deployedNetwork || "Base Sepolia"
+            } at ${project.deployedAddress}`
+          : "Contract deployment completed.",
+      });
+      setIsWatchingDeployment(false);
+    } else if (project.deploymentStatus === "failed") {
+      toast.error("Deployment Failed", {
+        description:
+          "Deployment failed on-chain. Check your contract or try again.",
+      });
+      setIsWatchingDeployment(false);
+    }
+  }, [isWatchingDeployment, project]);
 
   if (!ready || isLoading) {
     return (
@@ -838,6 +978,84 @@ export default function ProjectEditorPage() {
                         <code className="text-xs px-2 py-1 rounded bg-muted border border-border">
                           mapping({mapping.keyType} =&gt; {mapping.valueType});
                         </code>
+                        <div className="mt-2 space-y-1">
+                          <span className="text-[11px] text-muted-foreground">
+                            Maps to
+                          </span>
+                          <select
+                            className="w-full px-3 py-1.5 bg-input border border-primary/20 rounded-lg text-foreground focus:border-primary focus:ring-1 focus:ring-primary text-xs"
+                            value={
+                              mapping.associatedStruct
+                                ? `struct:${mapping.associatedStruct}`
+                                : (mapping as any).associatedVariableId
+                                ? `var:${(mapping as any).associatedVariableId}`
+                                : "custom"
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setDesignMappings((prev) =>
+                                prev.map((m) => {
+                                  if (m.id !== mapping.id) return m;
+                                  if (value === "custom") {
+                                    return {
+                                      ...m,
+                                      associatedStruct: undefined,
+                                      associatedVariableId: undefined,
+                                    } as Mapping;
+                                  }
+                                  if (value.startsWith("struct:")) {
+                                    const structId = value.replace(
+                                      "struct:",
+                                      ""
+                                    );
+                                    const struct = designStructs.find(
+                                      (s) => s.id === structId
+                                    );
+                                    return {
+                                      ...m,
+                                      associatedStruct: structId,
+                                      associatedVariableId: undefined,
+                                      valueType: struct?.name || m.valueType,
+                                    } as Mapping;
+                                  }
+                                  if (value.startsWith("var:")) {
+                                    const varId = value.replace("var:", "");
+                                    const variable = variables.find(
+                                      (v) => v.id === varId
+                                    );
+                                    return {
+                                      ...m,
+                                      associatedStruct: undefined,
+                                      associatedVariableId: varId,
+                                      valueType: variable?.type || m.valueType,
+                                    } as any;
+                                  }
+                                  return m;
+                                })
+                              );
+                            }}
+                          >
+                            <option value="custom">Custom type</option>
+                            {designStructs.length > 0 && (
+                              <optgroup label="Structs">
+                                {designStructs.map((s) => (
+                                  <option key={s.id} value={`struct:${s.id}`}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {variables.length > 0 && (
+                              <optgroup label="Variables">
+                                {variables.map((v) => (
+                                  <option key={v.id} value={`var:${v.id}`}>
+                                    {v.name} ({v.type})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
                       </div>
                     ))}
                     {designMappings.length === 0 && (
@@ -1056,6 +1274,16 @@ export default function ProjectEditorPage() {
                                   variant="outline"
                                   className="text-xs"
                                   onClick={() => {
+                                    setLogicDialogFunctionId(fn.id);
+                                  }}
+                                >
+                                  Logic
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => {
                                     setEditingFunctionId(fn.id);
                                     setFunctionForm({ name: fn.name });
                                     setIsFunctionDialogOpen(true);
@@ -1171,6 +1399,395 @@ export default function ProjectEditorPage() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
+
+                    {/* Function Logic Dialog */}
+                    <Dialog
+                      open={!!logicDialogFunctionId}
+                      onOpenChange={(open) => {
+                        if (!open) {
+                          setLogicDialogFunctionId(null);
+                          setRequireForm({ condition: "", message: "" });
+                          setStatementForm("");
+                          setMappingForm({
+                            mappingId: "",
+                            keyExpr: "",
+                            valueExpr: "",
+                          });
+                          setCallForm({
+                            targetFunctionId: "",
+                            args: "",
+                          });
+                        }
+                      }}
+                    >
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Function Logic</DialogTitle>
+                        </DialogHeader>
+                        {(() => {
+                          const fn = designFunctions.find(
+                            (f) => f.id === logicDialogFunctionId
+                          );
+                          if (!fn) {
+                            return (
+                              <p className="text-sm text-muted-foreground">
+                                No function selected.
+                              </p>
+                            );
+                          }
+
+                          const steps = fn.steps || [];
+
+                          return (
+                            <div className="space-y-4">
+                              <p className="text-xs text-muted-foreground">
+                                Build this function using simple steps. These
+                                steps will be converted into Solidity code.
+                              </p>
+
+                              <div className="space-y-2 max-h-64 overflow-y-auto border border-border rounded-md p-2">
+                                {steps.length === 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    No steps yet. Add a <code>require</code> or
+                                    custom statement below.
+                                  </p>
+                                )}
+                                {steps.map((step) => (
+                                  <div
+                                    key={step.id}
+                                    className="flex items-start justify-between gap-2 rounded border border-border/60 bg-muted/40 px-2 py-1.5"
+                                  >
+                                    <div className="text-xs">
+                                      {step.type === "require" && (
+                                        <>
+                                          <span className="font-semibold">
+                                            require
+                                          </span>{" "}
+                                          <span className="font-mono">
+                                            ({step.condition}
+                                            {step.message
+                                              ? `, "${step.message}"`
+                                              : ""}
+                                            );
+                                          </span>
+                                        </>
+                                      )}
+                                      {step.type === "statement" && (
+                                        <>
+                                          <span className="font-semibold">
+                                            statement
+                                          </span>{" "}
+                                          <span className="font-mono">
+                                            {step.code}
+                                          </span>
+                                        </>
+                                      )}
+                                      {step.type === "setMapping" && (
+                                        <>
+                                          <span className="font-semibold">
+                                            mapping
+                                          </span>{" "}
+                                          <span className="font-mono">
+                                            [{step.keyExpr}] = {step.valueExpr};
+                                          </span>
+                                        </>
+                                      )}
+                                      {step.type === "call" && (
+                                        <>
+                                          <span className="font-semibold">
+                                            call
+                                          </span>{" "}
+                                          <span className="font-mono">
+                                            ({step.args || "/* no args */"})
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-[10px] text-destructive"
+                                      onClick={() => {
+                                        setDesignFunctions((prev) =>
+                                          prev.map((f) =>
+                                            f.id === fn.id
+                                              ? {
+                                                  ...f,
+                                                  steps: (f.steps || []).filter(
+                                                    (s) => s.id !== step.id
+                                                  ),
+                                                }
+                                              : f
+                                          )
+                                        );
+                                      }}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="space-y-3">
+                                <div className="space-y-2">
+                                  <Label className="text-xs">
+                                    Add <code>require</code> step
+                                  </Label>
+                                  <Input
+                                    placeholder="condition (e.g. amount > 0)"
+                                    value={requireForm.condition}
+                                    onChange={(e) =>
+                                      setRequireForm((prev) => ({
+                                        ...prev,
+                                        condition: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <Input
+                                    placeholder='error message (e.g. "Invalid amount")'
+                                    value={requireForm.message}
+                                    onChange={(e) =>
+                                      setRequireForm((prev) => ({
+                                        ...prev,
+                                        message: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-1"
+                                    onClick={() => {
+                                      if (!requireForm.condition.trim()) return;
+                                      const newStep: FunctionStepRequire = {
+                                        id: Date.now().toString(),
+                                        type: "require",
+                                        condition: requireForm.condition.trim(),
+                                        message: requireForm.message.trim(),
+                                      };
+                                      setDesignFunctions((prev) =>
+                                        prev.map((f) =>
+                                          f.id === fn.id
+                                            ? {
+                                                ...f,
+                                                steps: [
+                                                  ...(f.steps || []),
+                                                  newStep,
+                                                ],
+                                              }
+                                            : f
+                                        )
+                                      );
+                                      setRequireForm({
+                                        condition: "",
+                                        message: "",
+                                      });
+                                    }}
+                                  >
+                                    Add require
+                                  </Button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label className="text-xs">
+                                    Add custom statement
+                                  </Label>
+                                  <Input
+                                    placeholder="e.g. balance[msg.sender] += amount;"
+                                    value={statementForm}
+                                    onChange={(e) =>
+                                      setStatementForm(e.target.value)
+                                    }
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-1"
+                                    onClick={() => {
+                                      if (!statementForm.trim()) return;
+                                      const newStep: FunctionStepStatement = {
+                                        id: Date.now().toString(),
+                                        type: "statement",
+                                        code: statementForm,
+                                      };
+                                      setDesignFunctions((prev) =>
+                                        prev.map((f) =>
+                                          f.id === fn.id
+                                            ? {
+                                                ...f,
+                                                steps: [
+                                                  ...(f.steps || []),
+                                                  newStep,
+                                                ],
+                                              }
+                                            : f
+                                        )
+                                      );
+                                      setStatementForm("");
+                                    }}
+                                  >
+                                    Add statement
+                                  </Button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label className="text-xs">
+                                    Write to mapping
+                                  </Label>
+                                  <select
+                                    className="w-full px-3 py-2 bg-input border border-primary/20 rounded-lg text-foreground focus:border-primary focus:ring-1 focus:ring-primary text-xs"
+                                    value={mappingForm.mappingId}
+                                    onChange={(e) =>
+                                      setMappingForm((prev) => ({
+                                        ...prev,
+                                        mappingId: e.target.value,
+                                      }))
+                                    }
+                                  >
+                                    <option value="">Select mapping</option>
+                                    {designMappings.map((m, idx) => (
+                                      <option key={m.id} value={m.id}>
+                                        mapping{idx + 1} ({(m as any).keyType}{" "}
+                                        =&gt; {(m as any).valueType})
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <Input
+                                    placeholder="key expression (e.g. msg.sender)"
+                                    value={mappingForm.keyExpr}
+                                    onChange={(e) =>
+                                      setMappingForm((prev) => ({
+                                        ...prev,
+                                        keyExpr: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <Input
+                                    placeholder="value expression (e.g. amount)"
+                                    value={mappingForm.valueExpr}
+                                    onChange={(e) =>
+                                      setMappingForm((prev) => ({
+                                        ...prev,
+                                        valueExpr: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-1"
+                                    onClick={() => {
+                                      if (
+                                        !mappingForm.mappingId ||
+                                        !mappingForm.keyExpr.trim() ||
+                                        !mappingForm.valueExpr.trim()
+                                      )
+                                        return;
+                                      const newStep: FunctionStepMappingSet = {
+                                        id: Date.now().toString(),
+                                        type: "setMapping",
+                                        mappingId: mappingForm.mappingId,
+                                        keyExpr: mappingForm.keyExpr,
+                                        valueExpr: mappingForm.valueExpr,
+                                      };
+                                      setDesignFunctions((prev) =>
+                                        prev.map((f) =>
+                                          f.id === fn.id
+                                            ? {
+                                                ...f,
+                                                steps: [
+                                                  ...(f.steps || []),
+                                                  newStep,
+                                                ],
+                                              }
+                                            : f
+                                        )
+                                      );
+                                      setMappingForm({
+                                        mappingId: "",
+                                        keyExpr: "",
+                                        valueExpr: "",
+                                      });
+                                    }}
+                                  >
+                                    Add mapping write
+                                  </Button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label className="text-xs">
+                                    Call another function
+                                  </Label>
+                                  <select
+                                    className="w-full px-3 py-2 bg-input border border-primary/20 rounded-lg text-foreground focus:border-primary focus:ring-1 focus:ring-primary text-xs"
+                                    value={callForm.targetFunctionId}
+                                    onChange={(e) =>
+                                      setCallForm((prev) => ({
+                                        ...prev,
+                                        targetFunctionId: e.target.value,
+                                      }))
+                                    }
+                                  >
+                                    <option value="">Select function</option>
+                                    {designFunctions
+                                      .filter((f) => f.id !== fn.id)
+                                      .map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                          {f.name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                  <Input
+                                    placeholder="arguments, e.g. msg.sender, amount"
+                                    value={callForm.args}
+                                    onChange={(e) =>
+                                      setCallForm((prev) => ({
+                                        ...prev,
+                                        args: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-1"
+                                    onClick={() => {
+                                      if (!callForm.targetFunctionId) return;
+                                      const newStep: FunctionStepCall = {
+                                        id: Date.now().toString(),
+                                        type: "call",
+                                        targetFunctionId:
+                                          callForm.targetFunctionId,
+                                        args: callForm.args,
+                                      };
+                                      setDesignFunctions((prev) =>
+                                        prev.map((f) =>
+                                          f.id === fn.id
+                                            ? {
+                                                ...f,
+                                                steps: [
+                                                  ...(f.steps || []),
+                                                  newStep,
+                                                ],
+                                              }
+                                            : f
+                                        )
+                                      );
+                                      setCallForm({
+                                        targetFunctionId: "",
+                                        args: "",
+                                      });
+                                    }}
+                                  >
+                                    Add function call
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </CardContent>
               </Card>
@@ -1179,14 +1796,53 @@ export default function ProjectEditorPage() {
                 <CardHeader>
                   <CardTitle>Constructor</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <ConstructorEditor
-                    constructor={designConstructor || undefined}
-                    onCancel={() => {}}
-                    onSave={(updated) => {
-                      setDesignConstructor(updated);
-                    }}
-                  />
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    A Solidity contract can only have one constructor. Configure
+                    it here, or remove it entirely if you don&apos;t need one.
+                  </p>
+
+                  {designConstructor ? (
+                    <>
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs text-destructive"
+                          onClick={() => setDesignConstructor(null)}
+                        >
+                          Remove constructor
+                        </Button>
+                      </div>
+                      <ConstructorEditor
+                        constructor={designConstructor}
+                        onCancel={() => {}}
+                        onSave={(updated) => {
+                          setDesignConstructor(updated);
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        No constructor defined yet.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setDesignConstructor({
+                            id: Date.now().toString(),
+                            parameters: [],
+                            isPayable: false,
+                            visibility: "public",
+                          } as Constructor)
+                        }
+                      >
+                        Add Constructor
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1218,22 +1874,49 @@ export default function ProjectEditorPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="status">Deployment Status</Label>
-                  <Input
-                    id="status"
-                    value={project.deploymentStatus}
-                    disabled
-                    className="bg-input"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="status"
+                      value={project.deploymentStatus}
+                      disabled
+                      className="bg-input"
+                    />
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-2 py-0.5"
+                    >
+                      {project.deployedNetwork || "base-sepolia"}
+                    </Badge>
+                  </div>
                 </div>
                 {project.deployedAddress && (
                   <div className="space-y-2">
                     <Label htmlFor="address">Deployed Address</Label>
-                    <Input
-                      id="address"
-                      value={project.deployedAddress}
-                      disabled
-                      className="bg-input font-mono"
-                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="address"
+                        value={project.deployedAddress}
+                        disabled
+                        className="bg-input font-mono"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            project.deployedAddress || ""
+                          );
+                          toast.success("Address copied", {
+                            description:
+                              "Deployed contract address copied to clipboard.",
+                          });
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>

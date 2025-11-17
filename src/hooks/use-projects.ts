@@ -34,6 +34,12 @@ export function useProject(id: string) {
       return data;
     },
     enabled: !!id,
+    // Poll while deploying so the UI can react to status changes
+    refetchInterval: (data) => {
+      const projectData = data as unknown as Project | undefined;
+      return projectData?.deploymentStatus === "deploying" ? 5000 : false;
+    },
+    refetchIntervalInBackground: true,
   });
 }
 
