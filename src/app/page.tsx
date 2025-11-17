@@ -73,7 +73,7 @@ export default function HomePage() {
       });
       setIsModalOpen(false);
       setProjectName("");
-      router.push(`/project/${newProject.id}/editor`);
+      router.push(`/project/${newProject._id}/editor`);
     } catch (error) {
       console.error("Failed to create project:", error);
     }
@@ -278,7 +278,7 @@ export default function HomePage() {
             {projects.map((project) => {
               const Icon = templateIcons[project.template];
               return (
-                <Link key={project.id} href={`/project/${project._id}/editor`}>
+                <Link key={project._id} href={`/project/${project._id}/editor`}>
                   <Card className="border-primary/20 bg-card/50 hover:border-primary/40 hover:bg-card/80 transition-all cursor-pointer h-full">
                     <CardHeader>
                       <div className="flex items-start justify-between">

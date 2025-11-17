@@ -10,7 +10,7 @@ export const DeploymentStatusSchema = z.enum([
 ]);
 
 export const ProjectSchema = z.object({
-  id: z.string(),
+  _id: z.string(),
   name: z.string().min(1, "Project name is required"),
   template: ProjectTemplateSchema,
   owner: z.string(), // Wallet address
@@ -25,7 +25,7 @@ export const ProjectSchema = z.object({
 });
 
 export const CreateProjectSchema = ProjectSchema.omit({
-  id: true,
+  _id: true,
   createdAt: true,
   updatedAt: true,
   deploymentStatus: true,

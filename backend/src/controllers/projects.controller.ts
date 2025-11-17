@@ -25,7 +25,7 @@ export async function createProject(req: AuthRequest, res: Response) {
       const projectCount = await Project.countDocuments({
         owner: walletAddress,
       });
-      if (projectCount >= 1) {
+      if (projectCount >= 3) {
         return res.status(403).json({
           error:
             "Free tier limit reached. Upgrade to Pro for unlimited projects.",

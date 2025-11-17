@@ -77,7 +77,7 @@ export function useUpdateProject() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["projects", data._id] });
     },
   });
 }
@@ -115,7 +115,7 @@ export function useDeployProject() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["projects", data._id] });
     },
   });
 }
