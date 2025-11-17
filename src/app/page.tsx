@@ -258,6 +258,26 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* Pricing Section */}
+        <Card className="border-primary/20 bg-card/50 mb-8">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground mb-2">
+                  Upgrade Your Plan
+                </h2>
+                <p className="text-muted-foreground">
+                  Unlock more projects and features with Standard or Premium
+                  plans
+                </p>
+              </div>
+              <Button asChild>
+                <Link href="/pricing">View Pricing</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Projects Grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

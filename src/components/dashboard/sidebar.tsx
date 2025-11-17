@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   X,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,6 +23,11 @@ const MENU_ITEMS = [
   { label: "Tables", href: "/dashboard/tables", icon: Grid3x3 },
   { label: "Structs", href: "/dashboard/contracts", icon: Code },
   { label: "Mappings", href: "/dashboard/mappings", icon: GitBranch },
+  {
+    label: "Subscriptions",
+    href: "/dashboard/subscriptions",
+    icon: CreditCard,
+  },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

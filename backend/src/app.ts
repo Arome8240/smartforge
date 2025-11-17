@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes";
 import projectsRoutes from "./routes/projects.routes";
+import subscriptionsRoutes from "./routes/subscriptions.routes";
 import { httpLogger, log } from "./utils/logger";
 
 const app = express();
@@ -44,6 +45,7 @@ app.get("/health", (req, res) => {
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectsRoutes);
+app.use("/api/subscriptions", subscriptionsRoutes);
 
 // Error handling
 app.use(

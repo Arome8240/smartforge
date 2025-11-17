@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IUser extends Document {
   walletAddress: string;
   privyUserId: string;
-  plan: "free" | "pro";
+  plan: "free" | "standard" | "premium";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,7 +24,7 @@ const UserSchema = new Schema<IUser>(
     },
     plan: {
       type: String,
-      enum: ["free", "pro"],
+      enum: ["free", "standard", "premium"],
       default: "free",
     },
   },

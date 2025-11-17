@@ -21,18 +21,29 @@ export async function createProject(req: AuthRequest, res: Response) {
       });
     }
 
-    // Check project limit for free tier
+    // Check project limit based on plan
     if (user.plan === "free") {
       const projectCount = await Project.countDocuments({
         owner: walletAddress,
       });
-      if (projectCount >= 3) {
+      if (projectCount >= 1) {
         return res.status(403).json({
           error:
-            "Free tier limit reached. Upgrade to Pro for unlimited projects.",
+            "Free tier limit reached. Upgrade to Standard or Premium for more projects.",
+        });
+      }
+    } else if (user.plan === "standard") {
+      const projectCount = await Project.countDocuments({
+        owner: walletAddress,
+      });
+      if (projectCount >= 10) {
+        return res.status(403).json({
+          error:
+            "Standard tier limit reached. Upgrade to Premium for unlimited projects.",
         });
       }
     }
+    // Premium plan has unlimited projects
 
     const project = await Project.create({
       name,
