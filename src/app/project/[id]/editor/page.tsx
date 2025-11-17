@@ -40,6 +40,7 @@ import {
   Settings,
   FunctionSquare,
   Box,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -98,6 +99,7 @@ type FunctionStepCall = {
   type: "call";
   targetFunctionId: string;
   args: string;
+  callData?: string;
 };
 
 type FunctionStepMappingSet = {
@@ -124,11 +126,24 @@ type DesignFunction = {
   steps?: FunctionStep[];
 };
 
+type DesignEventParam = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+type DesignEvent = {
+  id: string;
+  name: string;
+  params: DesignEventParam[];
+};
+
 function buildDesignSection(
   structs: Struct[],
   mappings: Mapping[],
   functions: DesignFunction[],
-  ctor: Constructor | null
+  ctor: Constructor | null,
+  events: DesignEvent[]
 ): string | null {
   const lines: string[] = [];
 
@@ -136,7 +151,8 @@ function buildDesignSection(
     structs.length === 0 &&
     mappings.length === 0 &&
     functions.length === 0 &&
-    !ctor
+    !ctor &&
+    events.length === 0
   ) {
     return null;
   }
@@ -180,6 +196,18 @@ function buildDesignSection(
     lines.push("");
   }
 
+  if (events.length > 0) {
+    lines.push("// Events generated from designer");
+    for (const ev of events) {
+      if (!ev.name.trim()) continue;
+      const params = (ev.params || [])
+        .map((p) => `${p.type || "uint256"} ${p.name || ""}`.trim())
+        .join(", ");
+      lines.push(`event ${ev.name}(${params});`);
+    }
+    lines.push("");
+  }
+
   if (functions.length > 0) {
     lines.push("// Functions generated from designer");
     for (const fn of functions) {
@@ -212,6 +240,9 @@ function buildDesignSection(
             const targetName = target?.name || "/* unknownFunction */";
             const args = step.args.trim();
             lines.push(`    ${targetName}(${args.length > 0 ? args : ""});`);
+            if (step.callData && step.callData.trim().length > 0) {
+              lines.push(`    // calldata: ${step.callData.trim()}`);
+            }
           } else if (step.type === "setMapping") {
             const index = mappings.findIndex(
               (m) => (m as any).id === step.mappingId
@@ -410,6 +441,7 @@ export default function ProjectEditorPage() {
   const [designFunctions, setDesignFunctions] = useState<DesignFunction[]>([]);
   const [designConstructor, setDesignConstructor] =
     useState<Constructor | null>(null);
+  const [designEvents, setDesignEvents] = useState<DesignEvent[]>([]);
 
   const [editingStruct, setEditingStruct] = useState<Struct | null>(null);
   const [editingMapping, setEditingMapping] = useState<Mapping | null>(null);
@@ -437,6 +469,15 @@ export default function ProjectEditorPage() {
   }>({
     name: "",
   });
+  const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [eventForm, setEventForm] = useState<{
+    name: string;
+    params: DesignEventParam[];
+  }>({
+    name: "",
+    params: [],
+  });
 
   const [logicDialogFunctionId, setLogicDialogFunctionId] = useState<
     string | null
@@ -454,7 +495,8 @@ export default function ProjectEditorPage() {
   const [callForm, setCallForm] = useState<{
     targetFunctionId: string;
     args: string;
-  }>({ targetFunctionId: "", args: "" });
+    callData: string;
+  }>({ targetFunctionId: "", args: "", callData: "" });
 
   const parsedStructs = useMemo(
     () => (sourceCode ? parseStructs(sourceCode) : []),
@@ -493,6 +535,7 @@ export default function ProjectEditorPage() {
       setDesignMappings(design.mappings || []);
       setDesignFunctions(design.functions || []);
       setDesignConstructor(design.constructor || null);
+      setDesignEvents(design.events || []);
     }
   }, [project]);
 
@@ -504,11 +547,18 @@ export default function ProjectEditorPage() {
           designStructs,
           designMappings,
           designFunctions,
-          designConstructor
+          designConstructor,
+          designEvents
         )
       )
     );
-  }, [designStructs, designMappings, designFunctions, designConstructor]);
+  }, [
+    designStructs,
+    designMappings,
+    designFunctions,
+    designConstructor,
+    designEvents,
+  ]);
 
   const handleSave = async () => {
     if (!project) return;
@@ -526,6 +576,7 @@ export default function ProjectEditorPage() {
             mappings: designMappings,
             functions: designFunctions,
             constructor: designConstructor,
+            events: designEvents,
           },
         },
         name: projectName,
@@ -1416,6 +1467,7 @@ export default function ProjectEditorPage() {
                           setCallForm({
                             targetFunctionId: "",
                             args: "",
+                            callData: "",
                           });
                         }
                       }}
@@ -1747,6 +1799,16 @@ export default function ProjectEditorPage() {
                                       }))
                                     }
                                   />
+                                  <Input
+                                    placeholder="call data (optional, e.g. abi.encode(...))"
+                                    value={callForm.callData}
+                                    onChange={(e) =>
+                                      setCallForm((prev) => ({
+                                        ...prev,
+                                        callData: e.target.value,
+                                      }))
+                                    }
+                                  />
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1776,10 +1838,23 @@ export default function ProjectEditorPage() {
                                       setCallForm({
                                         targetFunctionId: "",
                                         args: "",
+                                        callData: "",
                                       });
                                     }}
                                   >
                                     Add function call
+                                  </Button>
+                                </div>
+
+                                <div className="flex justify-end pt-2">
+                                  <Button
+                                    type="button"
+                                    onClick={() => {
+                                      setLogicDialogFunctionId(null);
+                                      toast.success("Function logic saved");
+                                    }}
+                                  >
+                                    Save Function
                                   </Button>
                                 </div>
                               </div>
@@ -1789,6 +1864,83 @@ export default function ProjectEditorPage() {
                       </DialogContent>
                     </Dialog>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-primary/20">
+                <CardHeader className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Events</CardTitle>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingEventId(null);
+                        setEventForm({ name: "", params: [] });
+                        setIsEventDialogOpen(true);
+                      }}
+                    >
+                      Add Event
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Define custom events your contract can emit.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {designEvents.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No events defined yet.
+                    </p>
+                  )}
+                  {designEvents.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="flex flex-col gap-1 rounded-lg border border-primary/15 bg-card/60 px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm text-foreground">
+                          event {ev.name}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => {
+                              setEditingEventId(ev.id);
+                              setEventForm({
+                                name: ev.name,
+                                params: ev.params || [],
+                              });
+                              setIsEventDialogOpen(true);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs text-destructive"
+                            onClick={() =>
+                              setDesignEvents((prev) =>
+                                prev.filter((event) => event.id !== ev.id)
+                              )
+                            }
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                      <code className="text-xs px-2 py-1 rounded bg-muted border border-border overflow-x-auto">
+                        event {ev.name}(
+                        {(ev.params || [])
+                          .map((p) => `${p.type} ${p.name}`)
+                          .join(", ")}
+                        );
+                      </code>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
 
@@ -1919,8 +2071,186 @@ export default function ProjectEditorPage() {
                     </div>
                   </div>
                 )}
+                {project.abi &&
+                  Array.isArray(project.abi) &&
+                  project.abi.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Contract ABI</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          const abiJson = JSON.stringify(project.abi, null, 2);
+                          const blob = new Blob([abiJson], {
+                            type: "application/json",
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${project.name || "contract"}-abi.json`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          toast.success("ABI downloaded", {
+                            description:
+                              "Contract ABI has been downloaded successfully.",
+                          });
+                        }}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download ABI
+                      </Button>
+                    </div>
+                  )}
               </CardContent>
             </Card>
+
+            <Dialog
+              open={isEventDialogOpen}
+              onOpenChange={(open) => {
+                setIsEventDialogOpen(open);
+                if (!open) {
+                  setEditingEventId(null);
+                  setEventForm({ name: "", params: [] });
+                }
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingEventId ? "Edit Event" : "Add Event"}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="event-name">Event Name</Label>
+                    <Input
+                      id="event-name"
+                      value={eventForm.name}
+                      onChange={(e) =>
+                        setEventForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      placeholder="CarMinted"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Parameters</Label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setEventForm((prev) => ({
+                            ...prev,
+                            params: [
+                              ...prev.params,
+                              {
+                                id: Date.now().toString(),
+                                name: "",
+                                type: "uint256",
+                              },
+                            ],
+                          }))
+                        }
+                      >
+                        Add param
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {eventForm.params.map((param) => (
+                        <div key={param.id} className="flex items-center gap-2">
+                          <Input
+                            placeholder="type (e.g. uint256)"
+                            value={param.type}
+                            onChange={(e) =>
+                              setEventForm((prev) => ({
+                                ...prev,
+                                params: prev.params.map((p) =>
+                                  p.id === param.id
+                                    ? { ...p, type: e.target.value }
+                                    : p
+                                ),
+                              }))
+                            }
+                          />
+                          <Input
+                            placeholder="name (e.g. tokenId)"
+                            value={param.name}
+                            onChange={(e) =>
+                              setEventForm((prev) => ({
+                                ...prev,
+                                params: prev.params.map((p) =>
+                                  p.id === param.id
+                                    ? { ...p, name: e.target.value }
+                                    : p
+                                ),
+                              }))
+                            }
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive text-xs"
+                            onClick={() =>
+                              setEventForm((prev) => ({
+                                ...prev,
+                                params: prev.params.filter(
+                                  (p) => p.id !== param.id
+                                ),
+                              }))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                      {eventForm.params.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          No parameters added.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter className="mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEventDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!eventForm.name.trim()) return;
+                      const newEvent: DesignEvent = {
+                        id: editingEventId || Date.now().toString(),
+                        name: eventForm.name.trim(),
+                        params: eventForm.params.map((p) => ({
+                          ...p,
+                          name: p.name.trim(),
+                          type: p.type.trim() || "uint256",
+                        })),
+                      };
+                      setDesignEvents((prev) =>
+                        prev.some((ev) => ev.id === newEvent.id)
+                          ? prev.map((ev) =>
+                              ev.id === newEvent.id ? newEvent : ev
+                            )
+                          : [...prev, newEvent]
+                      );
+                      setIsEventDialogOpen(false);
+                    }}
+                  >
+                    Save Event
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         </Tabs>
       </div>
