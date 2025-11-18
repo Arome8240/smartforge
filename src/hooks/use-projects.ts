@@ -115,13 +115,18 @@ export function useDeployProject() {
   );
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await apiClient.post<Project>(`/projects/${id}/deploy`);
-      return data;
+    mutationFn: async ({ id, network }: { id: string; network?: string }) => {
+      const { data } = await apiClient.post<{
+        message: string;
+        project: Project;
+      }>(`/projects/${id}/deploy`, { network });
+      return data.project;
     },
-    onSuccess: (data) => {
+    onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", data._id] });
+      if (project?._id) {
+        queryClient.invalidateQueries({ queryKey: ["projects", project._id] });
+      }
     },
   });
 }

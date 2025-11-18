@@ -10,6 +10,7 @@ export interface IProject extends Document {
   deploymentStatus: "draft" | "deploying" | "deployed" | "failed";
   deployedAddress?: string;
   deployedNetwork?: string;
+  targetNetwork?: "base-sepolia" | "base-mainnet";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +30,11 @@ const ProjectSchema = new Schema<IProject>(
       type: String,
       required: true,
       index: true,
+    },
+    targetNetwork: {
+      type: String,
+      enum: ["base-sepolia", "base-mainnet"],
+      default: "base-sepolia",
     },
     metadata: {
       type: Schema.Types.Mixed,

@@ -12,6 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -136,6 +143,33 @@ type DesignEvent = {
   id: string;
   name: string;
   params: DesignEventParam[];
+};
+
+const DEPLOYMENT_NETWORKS = [
+  {
+    id: "base-sepolia",
+    label: "Base Sepolia",
+    description: "Testnet · Chain ID 84532",
+  },
+  {
+    id: "base-mainnet",
+    label: "Base Mainnet",
+    description: "Mainnet · Chain ID 8453",
+  },
+] as const;
+
+type DeploymentNetworkId = (typeof DEPLOYMENT_NETWORKS)[number]["id"];
+
+const DEFAULT_DEPLOYMENT_NETWORK: DeploymentNetworkId = "base-sepolia";
+
+const ensureDeploymentNetwork = (networkId?: string): DeploymentNetworkId => {
+  const match = DEPLOYMENT_NETWORKS.find((network) => network.id === networkId);
+  return (match?.id as DeploymentNetworkId) || DEFAULT_DEPLOYMENT_NETWORK;
+};
+
+const getNetworkLabel = (networkId?: string) => {
+  const match = DEPLOYMENT_NETWORKS.find((network) => network.id === networkId);
+  return match?.label || DEPLOYMENT_NETWORKS[0].label;
 };
 
 function buildDesignSection(
@@ -434,6 +468,10 @@ export default function ProjectEditorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [isWatchingDeployment, setIsWatchingDeployment] = useState(false);
+  const [selectedNetwork, setSelectedNetwork] = useState<DeploymentNetworkId>(
+    DEFAULT_DEPLOYMENT_NETWORK
+  );
+  const [isUpdatingNetwork, setIsUpdatingNetwork] = useState(false);
 
   const [variables, setVariables] = useState<DesignVariable[]>([]);
   const [designStructs, setDesignStructs] = useState<Struct[]>([]);
@@ -536,6 +574,7 @@ export default function ProjectEditorPage() {
       setDesignFunctions(design.functions || []);
       setDesignConstructor(design.constructor || null);
       setDesignEvents(design.events || []);
+      setSelectedNetwork(ensureDeploymentNetwork(project.targetNetwork));
     }
   }, [project]);
 
@@ -559,6 +598,30 @@ export default function ProjectEditorPage() {
     designConstructor,
     designEvents,
   ]);
+
+  const handleNetworkChange = async (value: DeploymentNetworkId) => {
+    if (!project) return;
+
+    const previousNetwork = selectedNetwork;
+    setSelectedNetwork(value);
+    setIsUpdatingNetwork(true);
+    try {
+      await updateProject.mutateAsync({
+        id: project._id,
+        targetNetwork: value,
+      });
+      toast.success("Deployment network updated", {
+        description: `New deployments will target ${getNetworkLabel(value)}.`,
+      });
+    } catch (error) {
+      setSelectedNetwork(previousNetwork);
+      toast.error("Failed to update network", {
+        description: "Unable to update deployment network. Please try again.",
+      });
+    } finally {
+      setIsUpdatingNetwork(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!project) return;
@@ -597,10 +660,14 @@ export default function ProjectEditorPage() {
     if (!project) return;
 
     try {
-      await deployProject.mutateAsync(project._id);
+      await deployProject.mutateAsync({
+        id: project._id,
+        network: selectedNetwork,
+      });
       toast.success("Deployment Started", {
-        description:
-          "Your contract is being deployed with gasless transactions.",
+        description: `Deploying your contract to ${getNetworkLabel(
+          selectedNetwork
+        )}. We'll notify you once it completes.`,
       });
       setIsWatchingDeployment(true);
     } catch (error) {
@@ -616,9 +683,9 @@ export default function ProjectEditorPage() {
     if (project.deploymentStatus === "deployed") {
       toast.success("Deployment Successful", {
         description: project.deployedAddress
-          ? `Contract deployed to ${
-              project.deployedNetwork || "Base Sepolia"
-            } at ${project.deployedAddress}`
+          ? `Contract deployed to ${getNetworkLabel(
+              project.deployedNetwork || selectedNetwork
+            )} at ${project.deployedAddress}`
           : "Contract deployment completed.",
       });
       setIsWatchingDeployment(false);
@@ -629,7 +696,7 @@ export default function ProjectEditorPage() {
       });
       setIsWatchingDeployment(false);
     }
-  }, [isWatchingDeployment, project]);
+  }, [isWatchingDeployment, project, selectedNetwork]);
 
   if (!ready || isLoading) {
     return (
@@ -673,12 +740,45 @@ export default function ProjectEditorPage() {
                 <h1 className="text-2xl font-bold text-foreground">
                   {project.name}
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
                   {project.template} Contract
+                  <Badge variant="outline" className="px-2 py-0 text-xs">
+                    {getNetworkLabel(selectedNetwork)}
+                  </Badge>
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 flex-wrap justify-end">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Deployment Network
+                </span>
+                <Select
+                  value={selectedNetwork}
+                  disabled={
+                    isUpdatingNetwork || deployProject.isPending || !project
+                  }
+                  onValueChange={(value) =>
+                    handleNetworkChange(value as DeploymentNetworkId)
+                  }
+                >
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Select network" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEPLOYMENT_NETWORKS.map((network) => (
+                      <SelectItem key={network.id} value={network.id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{network.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {network.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button
                 variant="outline"
                 onClick={handleSave}
@@ -689,7 +789,7 @@ export default function ProjectEditorPage() {
               </Button>
               <Button
                 onClick={handleDeploy}
-                disabled={deployProject.isPending}
+                disabled={deployProject.isPending || isUpdatingNetwork}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <Rocket className="w-4 h-4 mr-2" />

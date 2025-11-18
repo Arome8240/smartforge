@@ -9,6 +9,8 @@ export const DeploymentStatusSchema = z.enum([
   "failed",
 ]);
 
+export const DeploymentNetworkSchema = z.enum(["base-sepolia", "base-mainnet"]);
+
 export const ProjectSchema = z.object({
   _id: z.string(),
   name: z.string().min(1, "Project name is required"),
@@ -20,6 +22,7 @@ export const ProjectSchema = z.object({
   deploymentStatus: DeploymentStatusSchema.default("draft"),
   deployedAddress: z.string().optional(),
   deployedNetwork: z.string().optional(),
+  targetNetwork: DeploymentNetworkSchema.optional(),
   createdAt: z.date().or(z.string()),
   updatedAt: z.date().or(z.string()),
 });
@@ -33,5 +36,6 @@ export const CreateProjectSchema = ProjectSchema.omit({
 
 export type ProjectTemplate = z.infer<typeof ProjectTemplateSchema>;
 export type DeploymentStatus = z.infer<typeof DeploymentStatusSchema>;
+export type DeploymentNetwork = z.infer<typeof DeploymentNetworkSchema>;
 export type Project = z.infer<typeof ProjectSchema>;
 export type CreateProject = z.infer<typeof CreateProjectSchema>;

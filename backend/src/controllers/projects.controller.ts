@@ -4,11 +4,16 @@ import { User } from "../models/User";
 import { AuthRequest } from "../middleware/auth";
 import { CONTRACT_TEMPLATES } from "../services/contract-templates";
 import { log } from "../utils/logger";
-import { deployToBaseSepolia } from "../services/deployment";
+import { deployToBaseNetwork, BaseNetworkKey } from "../services/deployment";
+
+const SUPPORTED_NETWORKS: BaseNetworkKey[] = ["base-sepolia", "base-mainnet"];
+
+const isSupportedNetwork = (network?: string): network is BaseNetworkKey =>
+  !!network && SUPPORTED_NETWORKS.includes(network as BaseNetworkKey);
 
 export async function createProject(req: AuthRequest, res: Response) {
   try {
-    const { name, template, sourceCode } = req.body;
+    const { name, template, sourceCode, targetNetwork } = req.body;
     const walletAddress = req.user!.walletAddress;
 
     // Get or create user
@@ -49,6 +54,9 @@ export async function createProject(req: AuthRequest, res: Response) {
       name,
       template,
       owner: walletAddress,
+      targetNetwork: isSupportedNetwork(targetNetwork)
+        ? targetNetwork
+        : "base-sepolia",
       sourceCode:
         sourceCode ||
         CONTRACT_TEMPLATES[template as keyof typeof CONTRACT_TEMPLATES] ||
@@ -149,20 +157,29 @@ export async function deployProject(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
     const walletAddress = req.user!.walletAddress;
+    const requestedNetwork = req.body?.network;
 
     const project = await Project.findOne({ _id: id, owner: walletAddress });
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
     }
 
+    const networkToUse = isSupportedNetwork(requestedNetwork)
+      ? requestedNetwork
+      : isSupportedNetwork(project.targetNetwork)
+      ? project.targetNetwork
+      : "base-sepolia";
+
     // Update status to deploying
     project.deploymentStatus = "deploying";
+    project.targetNetwork = networkToUse;
     await project.save();
 
-    // Kick off real deployment to Base Sepolia (non-blocking)
+    // Kick off real deployment (non-blocking)
     (async () => {
       try {
-        const { address, abi, network, txHash } = await deployToBaseSepolia(
+        const { address, abi, network, txHash } = await deployToBaseNetwork(
+          networkToUse,
           project.sourceCode || "",
           project.owner
         );

@@ -25,6 +25,10 @@ function compileContract(sourceCode: string): CompileResult {
     },
   };
 
+  /*
+  I want it to be able to deploy to all EVM compatible Networks, And it should pop a field for deployer to add their privateKey so that their private will be used for the deployment and the contract will be assigned to the owner of the private key
+  */
+
   // Note: we deliberately avoid using the import callback / multiple compiler stacks
   // to prevent the "You shall not have another CompilerStack aside me" error.
   const output = JSON.parse(solc.compile(JSON.stringify(input)));
@@ -58,7 +62,34 @@ function compileContract(sourceCode: string): CompileResult {
   };
 }
 
-export async function deployToBaseSepolia(
+type BaseNetworkConfig = {
+  label: string;
+  rpcEnv: string;
+  privateKeyEnv: string;
+  fallbackRpc?: string;
+};
+
+const BASE_NETWORK_CONFIG: Record<
+  "base-sepolia" | "base-mainnet",
+  BaseNetworkConfig
+> = {
+  "base-sepolia": {
+    label: "Base Sepolia",
+    rpcEnv: "BASE_SEPOLIA_RPC_URL",
+    privateKeyEnv: "BASE_SEPOLIA_DEPLOYER_KEY",
+    fallbackRpc: "https://sepolia.base.org",
+  },
+  "base-mainnet": {
+    label: "Base Mainnet",
+    rpcEnv: "BASE_MAINNET_RPC_URL",
+    privateKeyEnv: "BASE_MAINNET_DEPLOYER_KEY",
+  },
+} as const;
+
+export type BaseNetworkKey = keyof typeof BASE_NETWORK_CONFIG;
+
+export async function deployToBaseNetwork(
+  network: BaseNetworkKey,
   sourceCode: string,
   ownerAddress: string
 ) {
@@ -66,23 +97,38 @@ export async function deployToBaseSepolia(
     throw new Error("Project has no sourceCode to deploy");
   }
 
-  const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org"; // public RPC as fallback
-  const privateKey = process.env.BASE_SEPOLIA_DEPLOYER_KEY;
+  const config = BASE_NETWORK_CONFIG[network];
+  if (!config) {
+    throw new Error(`Unsupported Base network: ${network}`);
+  }
+
+  const rpcUrl =
+    process.env[config.rpcEnv as keyof NodeJS.ProcessEnv] || config.fallbackRpc;
+  const privateKey =
+    process.env[config.privateKeyEnv as keyof NodeJS.ProcessEnv];
 
   if (!privateKey) {
     throw new Error(
-      "BASE_SEPOLIA_DEPLOYER_KEY is not set in environment variables"
+      `${config.privateKeyEnv} is not set in environment variables`
     );
   }
 
-  log.info("Compiling contract for deployment to Base Sepolia...");
+  if (!rpcUrl) {
+    throw new Error(
+      `${config.rpcEnv} is not set in environment variables and no fallback RPC is available`
+    );
+  }
+
+  log.info(`Compiling contract for deployment to ${config.label}...`);
   const { abi, bytecode, contractName } = compileContract(sourceCode);
 
   const provider = new JsonRpcProvider(rpcUrl);
   const wallet = new Wallet(privateKey, provider);
 
   log.info(
-    `Deploying contract ${contractName} from ${await wallet.getAddress()} on Base Sepolia...`
+    `Deploying contract ${contractName} from ${await wallet.getAddress()} on ${
+      config.label
+    }...`
   );
 
   const factory = new ContractFactory(abi, bytecode, wallet);
@@ -125,7 +171,7 @@ export async function deployToBaseSepolia(
   }
 
   log.success(
-    `Deployed contract ${contractName} to ${address} on Base Sepolia. Tx: ${
+    `Deployed contract ${contractName} to ${address} on ${config.label}. Tx: ${
       tx?.hash || "unknown"
     }`
   );
@@ -133,7 +179,7 @@ export async function deployToBaseSepolia(
   return {
     address,
     abi,
-    network: "base-sepolia",
+    network,
     txHash: tx?.hash || "",
   };
 }
