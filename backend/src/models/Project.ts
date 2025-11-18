@@ -1,5 +1,11 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export interface NetworkInfo {
+  name: string;
+  chainId: number;
+  rpcUrl?: string;
+}
+
 export interface IProject extends Document {
   name: string;
   template: "ERC20" | "ERC721" | "Custom";
@@ -9,8 +15,8 @@ export interface IProject extends Document {
   sourceCode?: string;
   deploymentStatus: "draft" | "deploying" | "deployed" | "failed";
   deployedAddress?: string;
-  deployedNetwork?: string;
-  targetNetwork?: "base-sepolia" | "base-mainnet";
+  deployedNetwork?: NetworkInfo;
+  targetNetwork?: NetworkInfo;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,9 +38,7 @@ const ProjectSchema = new Schema<IProject>(
       index: true,
     },
     targetNetwork: {
-      type: String,
-      enum: ["base-sepolia", "base-mainnet"],
-      default: "base-sepolia",
+      type: Schema.Types.Mixed,
     },
     metadata: {
       type: Schema.Types.Mixed,
@@ -57,7 +61,7 @@ const ProjectSchema = new Schema<IProject>(
       type: String,
     },
     deployedNetwork: {
-      type: String,
+      type: Schema.Types.Mixed,
     },
   },
   {

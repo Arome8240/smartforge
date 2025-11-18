@@ -106,6 +106,16 @@ export function useDeleteProject() {
   });
 }
 
+export interface DeployProjectParams {
+  id: string;
+  networkConfig: {
+    name: string;
+    chainId: number;
+    rpcUrl: string;
+  };
+  privateKey: string;
+}
+
 export function useDeployProject() {
   const queryClient = useQueryClient();
   const { getAccessToken } = usePrivy();
@@ -115,11 +125,11 @@ export function useDeployProject() {
   );
 
   return useMutation({
-    mutationFn: async ({ id, network }: { id: string; network?: string }) => {
+    mutationFn: async ({ id, networkConfig, privateKey }: DeployProjectParams) => {
       const { data } = await apiClient.post<{
         message: string;
         project: Project;
-      }>(`/projects/${id}/deploy`, { network });
+      }>(`/projects/${id}/deploy`, { networkConfig, privateKey });
       return data.project;
     },
     onSuccess: (project) => {

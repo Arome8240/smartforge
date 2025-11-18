@@ -62,73 +62,60 @@ function compileContract(sourceCode: string): CompileResult {
   };
 }
 
-type BaseNetworkConfig = {
-  label: string;
-  rpcEnv: string;
-  privateKeyEnv: string;
-  fallbackRpc?: string;
-};
+export interface NetworkConfig {
+  name: string;
+  rpcUrl: string;
+  chainId: number;
+}
 
-const BASE_NETWORK_CONFIG: Record<
-  "base-sepolia" | "base-mainnet",
-  BaseNetworkConfig
-> = {
-  "base-sepolia": {
-    label: "Base Sepolia",
-    rpcEnv: "BASE_SEPOLIA_RPC_URL",
-    privateKeyEnv: "BASE_SEPOLIA_DEPLOYER_KEY",
-    fallbackRpc: "https://sepolia.base.org",
-  },
-  "base-mainnet": {
-    label: "Base Mainnet",
-    rpcEnv: "BASE_MAINNET_RPC_URL",
-    privateKeyEnv: "BASE_MAINNET_DEPLOYER_KEY",
-  },
-} as const;
+export interface DeploymentParams {
+  networkConfig: NetworkConfig;
+  sourceCode: string;
+  privateKey: string;
+  ownerAddress: string;
+}
 
-export type BaseNetworkKey = keyof typeof BASE_NETWORK_CONFIG;
-
-export async function deployToBaseNetwork(
-  network: BaseNetworkKey,
-  sourceCode: string,
-  ownerAddress: string
+export async function deployToEVMNetwork(
+  params: DeploymentParams
 ) {
+  const { networkConfig, sourceCode, privateKey, ownerAddress } = params;
+
   if (!sourceCode) {
     throw new Error("Project has no sourceCode to deploy");
   }
 
-  const config = BASE_NETWORK_CONFIG[network];
-  if (!config) {
-    throw new Error(`Unsupported Base network: ${network}`);
+  if (!privateKey || privateKey.trim() === "") {
+    throw new Error("Private key is required for deployment");
   }
 
-  const rpcUrl =
-    process.env[config.rpcEnv as keyof NodeJS.ProcessEnv] || config.fallbackRpc;
-  const privateKey =
-    process.env[config.privateKeyEnv as keyof NodeJS.ProcessEnv];
-
-  if (!privateKey) {
-    throw new Error(
-      `${config.privateKeyEnv} is not set in environment variables`
-    );
+  if (!networkConfig.rpcUrl || networkConfig.rpcUrl.trim() === "") {
+    throw new Error("RPC URL is required for deployment");
   }
 
-  if (!rpcUrl) {
-    throw new Error(
-      `${config.rpcEnv} is not set in environment variables and no fallback RPC is available`
-    );
+  // Validate private key format
+  const cleanPrivateKey = privateKey.startsWith("0x") 
+    ? privateKey 
+    : `0x${privateKey}`;
+
+  if (!/^0x[0-9a-fA-F]{64}$/.test(cleanPrivateKey)) {
+    throw new Error("Invalid private key format. Expected 64 hex characters.");
   }
 
-  log.info(`Compiling contract for deployment to ${config.label}...`);
+  log.info(`Compiling contract for deployment to ${networkConfig.name}...`);
   const { abi, bytecode, contractName } = compileContract(sourceCode);
 
-  const provider = new JsonRpcProvider(rpcUrl);
-  const wallet = new Wallet(privateKey, provider);
+  const provider = new JsonRpcProvider(networkConfig.rpcUrl, {
+    chainId: networkConfig.chainId,
+    name: networkConfig.name,
+  });
+  
+  const wallet = new Wallet(cleanPrivateKey, provider);
+  const deployerAddress = await wallet.getAddress();
 
   log.info(
-    `Deploying contract ${contractName} from ${await wallet.getAddress()} on ${
-      config.label
-    }...`
+    `Deploying contract ${contractName} from ${deployerAddress} on ${
+      networkConfig.name
+    } (Chain ID: ${networkConfig.chainId})...`
   );
 
   const factory = new ContractFactory(abi, bytecode, wallet);
@@ -138,40 +125,42 @@ export async function deployToBaseNetwork(
   await contract.waitForDeployment();
   const address = await contract.getAddress();
 
-  // Try to transfer ownership / set owner to the project owner address
-  try {
-    const instance = new Contract(address, abi, wallet);
-    const anyInstance = instance as any;
+  // Try to transfer ownership / set owner to the project owner address if different
+  if (ownerAddress.toLowerCase() !== deployerAddress.toLowerCase()) {
+    try {
+      const instance = new Contract(address, abi, wallet);
+      const anyInstance = instance as any;
 
-    if (typeof anyInstance.transferOwnership === "function") {
-      log.info(
-        `Transferring ownership of ${contractName} at ${address} to ${ownerAddress}...`
-      );
-      const txOwn = await anyInstance.transferOwnership(ownerAddress);
-      await txOwn.wait();
-      log.success(`Ownership transferred to ${ownerAddress}`);
-    } else if (typeof anyInstance.setOwner === "function") {
-      log.info(
-        `Setting owner of ${contractName} at ${address} to ${ownerAddress}...`
-      );
-      const txOwn = await anyInstance.setOwner(ownerAddress);
-      await txOwn.wait();
-      log.success(`Owner set to ${ownerAddress}`);
-    } else {
-      log.info(
-        "Contract does not expose transferOwnership/setOwner; leaving deployer as owner."
+      if (typeof anyInstance.transferOwnership === "function") {
+        log.info(
+          `Transferring ownership of ${contractName} at ${address} to ${ownerAddress}...`
+        );
+        const txOwn = await anyInstance.transferOwnership(ownerAddress);
+        await txOwn.wait();
+        log.success(`Ownership transferred to ${ownerAddress}`);
+      } else if (typeof anyInstance.setOwner === "function") {
+        log.info(
+          `Setting owner of ${contractName} at ${address} to ${ownerAddress}...`
+        );
+        const txOwn = await anyInstance.setOwner(ownerAddress);
+        await txOwn.wait();
+        log.success(`Owner set to ${ownerAddress}`);
+      } else {
+        log.info(
+          "Contract does not expose transferOwnership/setOwner; owner is deployer."
+        );
+      }
+    } catch (ownershipErr: any) {
+      log.error(
+        `Failed to transfer ownership to ${ownerAddress}: ${
+          ownershipErr?.message || ownershipErr
+        }`
       );
     }
-  } catch (ownershipErr: any) {
-    log.error(
-      `Failed to transfer ownership to ${ownerAddress}: ${
-        ownershipErr?.message || ownershipErr
-      }`
-    );
   }
 
   log.success(
-    `Deployed contract ${contractName} to ${address} on ${config.label}. Tx: ${
+    `Deployed contract ${contractName} to ${address} on ${networkConfig.name}. Tx: ${
       tx?.hash || "unknown"
     }`
   );
@@ -179,7 +168,8 @@ export async function deployToBaseNetwork(
   return {
     address,
     abi,
-    network,
+    network: networkConfig.name,
+    chainId: networkConfig.chainId,
     txHash: tx?.hash || "",
   };
 }

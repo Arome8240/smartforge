@@ -35,7 +35,9 @@ import {
   useProject,
   useUpdateProject,
   useDeployProject,
+  DeployProjectParams,
 } from "@/hooks/use-projects";
+import { DeployDialog } from "@/components/deploy-dialog";
 import { CONTRACT_TEMPLATES } from "@/lib/contract-templates";
 import {
   Code2,
@@ -656,18 +658,20 @@ export default function ProjectEditorPage() {
     }
   };
 
-  const handleDeploy = async () => {
+  const handleDeploy = async (deploymentData: {
+    networkConfig: { name: string; chainId: number; rpcUrl: string };
+    privateKey: string;
+  }) => {
     if (!project) return;
 
     try {
       await deployProject.mutateAsync({
         id: project._id,
-        network: selectedNetwork,
+        networkConfig: deploymentData.networkConfig,
+        privateKey: deploymentData.privateKey,
       });
       toast.success("Deployment Started", {
-        description: `Deploying your contract to ${getNetworkLabel(
-          selectedNetwork
-        )}. We'll notify you once it completes.`,
+        description: `Deploying your contract to ${deploymentData.networkConfig.name}. We'll notify you once it completes.`,
       });
       setIsWatchingDeployment(true);
     } catch (error) {
@@ -787,14 +791,11 @@ export default function ProjectEditorPage() {
                 <Save className="w-4 h-4 mr-2" />
                 {isSaving ? "Saving..." : "Save"}
               </Button>
-              <Button
-                onClick={handleDeploy}
-                disabled={deployProject.isPending || isUpdatingNetwork}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Rocket className="w-4 h-4 mr-2" />
-                {deployProject.isPending ? "Deploying..." : "Deploy Contract"}
-              </Button>
+              <DeployDialog
+                projectId={project._id}
+                onDeploy={handleDeploy}
+                isDeploying={deployProject.isPending}
+              />
             </div>
           </div>
         </div>

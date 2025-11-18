@@ -4,12 +4,7 @@ import { User } from "../models/User";
 import { AuthRequest } from "../middleware/auth";
 import { CONTRACT_TEMPLATES } from "../services/contract-templates";
 import { log } from "../utils/logger";
-import { deployToBaseNetwork, BaseNetworkKey } from "../services/deployment";
-
-const SUPPORTED_NETWORKS: BaseNetworkKey[] = ["base-sepolia", "base-mainnet"];
-
-const isSupportedNetwork = (network?: string): network is BaseNetworkKey =>
-  !!network && SUPPORTED_NETWORKS.includes(network as BaseNetworkKey);
+import { deployToEVMNetwork, NetworkConfig } from "../services/deployment";
 
 export async function createProject(req: AuthRequest, res: Response) {
   try {
@@ -54,9 +49,7 @@ export async function createProject(req: AuthRequest, res: Response) {
       name,
       template,
       owner: walletAddress,
-      targetNetwork: isSupportedNetwork(targetNetwork)
-        ? targetNetwork
-        : "base-sepolia",
+      targetNetwork,
       sourceCode:
         sourceCode ||
         CONTRACT_TEMPLATES[template as keyof typeof CONTRACT_TEMPLATES] ||
@@ -157,41 +150,50 @@ export async function deployProject(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
     const walletAddress = req.user!.walletAddress;
-    const requestedNetwork = req.body?.network;
+    const { networkConfig, privateKey } = req.body;
 
     const project = await Project.findOne({ _id: id, owner: walletAddress });
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    const networkToUse = isSupportedNetwork(requestedNetwork)
-      ? requestedNetwork
-      : isSupportedNetwork(project.targetNetwork)
-      ? project.targetNetwork
-      : "base-sepolia";
+    // Validate network config
+    if (!networkConfig || !networkConfig.name || !networkConfig.rpcUrl || !networkConfig.chainId) {
+      return res.status(400).json({ 
+        error: "Network configuration is required (name, rpcUrl, chainId)" 
+      });
+    }
+
+    // Validate private key
+    if (!privateKey || privateKey.trim() === "") {
+      return res.status(400).json({ 
+        error: "Private key is required for deployment" 
+      });
+    }
 
     // Update status to deploying
     project.deploymentStatus = "deploying";
-    project.targetNetwork = networkToUse;
+    project.targetNetwork = networkConfig;
     await project.save();
 
     // Kick off real deployment (non-blocking)
     (async () => {
       try {
-        const { address, abi, network, txHash } = await deployToBaseNetwork(
-          networkToUse,
-          project.sourceCode || "",
-          project.owner
-        );
+        const { address, abi, network, chainId, txHash } = await deployToEVMNetwork({
+          networkConfig,
+          sourceCode: project.sourceCode || "",
+          privateKey,
+          ownerAddress: project.owner,
+        });
 
         project.deploymentStatus = "deployed";
         project.deployedAddress = address;
-        project.deployedNetwork = network;
+        project.deployedNetwork = { name: network, chainId };
         project.abi = abi;
         await project.save();
 
         log.success(
-          `Project ${project._id} deployed to ${network} at ${address} (tx: ${txHash})`
+          `Project ${project._id} deployed to ${network} (Chain ID: ${chainId}) at ${address} (tx: ${txHash})`
         );
       } catch (err: any) {
         log.error(
