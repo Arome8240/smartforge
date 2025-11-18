@@ -8,17 +8,18 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@privy-io/node": "^0.5.0",
     "@privy-io/server-auth": "^1.32.5",
     "chalk": "^5.6.2",
     "cors": "*",
     "dotenv": "*",
+    "ethers": "^6.13.1",
     "express": "*",
     "mongoose": "*",
     "morgan": "^1.10.1",
-    "zod": "*",
-    "ethers": "^6.13.1",
-    "solc": "^0.8.26"
+    "solc": "^0.8.26",
+    "zod": "*"
   },
   "devDependencies": {
     "@types/cors": "*",

@@ -3,6 +3,8 @@ import cors from "cors";
 import authRoutes from "./routes/auth.routes";
 import projectsRoutes from "./routes/projects.routes";
 import subscriptionsRoutes from "./routes/subscriptions.routes";
+import compileRoutes from "./routes/compile.routes";
+import aiRoutes from "./routes/ai.routes";
 import { httpLogger, log } from "./utils/logger";
 
 const app = express();
@@ -46,6 +48,8 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectsRoutes);
 app.use("/api/subscriptions", subscriptionsRoutes);
+app.use("/api/compile", compileRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Error handling
 app.use(

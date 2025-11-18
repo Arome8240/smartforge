@@ -39,6 +39,7 @@ import {
 } from "@/hooks/use-projects";
 import { DeployDialog } from "@/components/deploy-dialog";
 import { CONTRACT_TEMPLATES } from "@/lib/contract-templates";
+import { createPrivyApiClient } from "@/lib/privy-api";
 import {
   Code2,
   Rocket,
@@ -50,9 +51,14 @@ import {
   FunctionSquare,
   Box,
   Download,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { SolidityEditor } from "@/components/solidity-editor";
+import { AIAssistant } from "@/components/ai-assistant";
 
 type ParsedStructField = {
   name: string;
@@ -465,6 +471,11 @@ export default function ProjectEditorPage() {
   const { data: project, isLoading } = useProject(projectId);
   const updateProject = useUpdateProject();
   const deployProject = useDeployProject();
+  const { getAccessToken } = usePrivy();
+  const apiClient = useMemo(
+    () => createPrivyApiClient(getAccessToken),
+    [getAccessToken]
+  );
 
   const [sourceCode, setSourceCode] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -474,6 +485,8 @@ export default function ProjectEditorPage() {
     DEFAULT_DEPLOYMENT_NETWORK
   );
   const [isUpdatingNetwork, setIsUpdatingNetwork] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [compilationResult, setCompilationResult] = useState<any>(null);
 
   const [variables, setVariables] = useState<DesignVariable[]>([]);
   const [designStructs, setDesignStructs] = useState<Struct[]>([]);
@@ -622,6 +635,38 @@ export default function ProjectEditorPage() {
       });
     } finally {
       setIsUpdatingNetwork(false);
+    }
+  };
+
+  const handleCompile = async () => {
+    if (!sourceCode.trim()) {
+      toast.error("No code to compile");
+      return;
+    }
+
+    setIsCompiling(true);
+    try {
+      const { data } = await apiClient.post("/compile", { sourceCode });
+
+      setCompilationResult(data);
+
+      if (data.success) {
+        toast.success("Compilation Successful", {
+          description: data.warnings.length > 0
+            ? `Compiled with ${data.warnings.length} warning(s)`
+            : "Contract compiled successfully",
+        });
+      } else {
+        toast.error("Compilation Failed", {
+          description: `${data.errors.length} error(s) found`,
+        });
+      }
+    } catch (error: any) {
+      toast.error("Compilation Error", {
+        description: error.response?.data?.error || "Failed to compile contract",
+      });
+    } finally {
+      setIsCompiling(false);
     }
   };
 
@@ -785,6 +830,33 @@ export default function ProjectEditorPage() {
               </div>
               <Button
                 variant="outline"
+                onClick={handleCompile}
+                disabled={isCompiling}
+              >
+                {isCompiling ? (
+                  <>
+                    <Code2 className="w-4 h-4 mr-2 animate-pulse" />
+                    Compiling...
+                  </>
+                ) : compilationResult?.success ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
+                    Compile
+                  </>
+                ) : compilationResult?.errors?.length > 0 ? (
+                  <>
+                    <XCircle className="w-4 h-4 mr-2 text-red-600" />
+                    Compile
+                  </>
+                ) : (
+                  <>
+                    <Code2 className="w-4 h-4 mr-2" />
+                    Compile
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
                 onClick={handleSave}
                 disabled={isSaving}
               >
@@ -834,17 +906,108 @@ export default function ProjectEditorPage() {
           <TabsContent value="code" className="mt-6">
             <Card className="border-primary/20">
               <CardHeader>
-                <CardTitle>Solidity Code</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Solidity Code</CardTitle>
+                  {compilationResult && (
+                    <div className="flex items-center gap-4 text-sm">
+                      {compilationResult.success ? (
+                        <div className="flex items-center gap-1 text-green-600">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>No errors</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-red-600">
+                          <XCircle className="w-4 h-4" />
+                          <span>{compilationResult.errors.length} error(s)</span>
+                        </div>
+                      )}
+                      {compilationResult.warnings?.length > 0 && (
+                        <div className="flex items-center gap-1 text-yellow-600">
+                          <AlertCircle className="w-4 h-4" />
+                          <span>{compilationResult.warnings.length} warning(s)</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </CardHeader>
-              <CardContent>
-                <Textarea
+              <CardContent className="space-y-4">
+                <SolidityEditor
                   value={sourceCode}
-                  onChange={(e) => setSourceCode(e.target.value)}
-                  className="font-mono text-sm min-h-[600px] bg-background border-primary/20"
-                  placeholder="// Your Solidity code here..."
+                  onChange={setSourceCode}
+                  height="600px"
                 />
+
+                {/* Compilation Results */}
+                {compilationResult && (
+                  <div className="space-y-3">
+                    {compilationResult.errors?.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-red-600 flex items-center gap-2">
+                          <XCircle className="w-4 h-4" />
+                          Errors
+                        </h4>
+                        <div className="space-y-2">
+                          {compilationResult.errors.map((error: any, index: number) => (
+                            <div
+                              key={index}
+                              className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md"
+                            >
+                              <pre className="text-xs text-red-800 dark:text-red-200 whitespace-pre-wrap">
+                                {error.formattedMessage || error.message}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {compilationResult.warnings?.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-yellow-600 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          Warnings
+                        </h4>
+                        <div className="space-y-2">
+                          {compilationResult.warnings.map((warning: any, index: number) => (
+                            <div
+                              key={index}
+                              className="p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md"
+                            >
+                              <pre className="text-xs text-yellow-800 dark:text-yellow-200 whitespace-pre-wrap">
+                                {warning.formattedMessage || warning.message}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {compilationResult.success && (
+                      <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-md">
+                        <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="text-sm font-medium">
+                            Contract compiled successfully!
+                            {compilationResult.contractName && (
+                              <span className="ml-2 font-mono text-xs">
+                                {compilationResult.contractName}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
+
+            {/* AI Assistant */}
+            <AIAssistant
+              currentCode={sourceCode}
+              onCodeGenerated={(code) => setSourceCode(code)}
+            />
           </TabsContent>
 
           <TabsContent value="variables" className="mt-6">
