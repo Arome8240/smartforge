@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { authenticate } from "../middleware/auth";
+import { authenticatePrivy } from "../middleware/auth";
 import { generateCode, improveCode } from "../controllers/ai.controller";
 
 const router = Router();
 
 // All routes require authentication
-router.use(authenticate);
+router.use(authenticatePrivy);
 
 // POST /api/ai/generate - Generate Solidity code from prompt
 router.post("/generate", generateCode);
