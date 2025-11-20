@@ -127,16 +127,26 @@ type DesignEvent = {
     params: DesignEventParam[];
 };
 
+type NetworkInfo = {
+    name?: string;
+    chainId?: number;
+    rpcUrl?: string;
+};
+
+type NetworkValue = DeploymentNetworkId | NetworkInfo | null | undefined;
+
 const DEPLOYMENT_NETWORKS = [
     {
         id: "base-sepolia",
         label: "Base Sepolia",
         description: "Testnet · Chain ID 84532",
+        chainId: 84532,
     },
     {
         id: "base-mainnet",
         label: "Base Mainnet",
         description: "Mainnet · Chain ID 8453",
+        chainId: 8453,
     },
 ] as const;
 
@@ -144,14 +154,70 @@ type DeploymentNetworkId = (typeof DEPLOYMENT_NETWORKS)[number]["id"];
 
 const DEFAULT_DEPLOYMENT_NETWORK: DeploymentNetworkId = "base-sepolia";
 
-const ensureDeploymentNetwork = (networkId?: string): DeploymentNetworkId => {
-    const match = DEPLOYMENT_NETWORKS.find((network) => network.id === networkId);
-    return (match?.id as DeploymentNetworkId) || DEFAULT_DEPLOYMENT_NETWORK;
+const findDeploymentNetworkMatch = (value?: string) => {
+    if (!value) return undefined;
+    const normalized = value.toLowerCase();
+    return DEPLOYMENT_NETWORKS.find(
+        (network) => network.id.toLowerCase() === normalized || network.label.toLowerCase() === normalized
+    );
 };
 
-const getNetworkLabel = (networkId?: string) => {
-    const match = DEPLOYMENT_NETWORKS.find((network) => network.id === networkId);
-    return match?.label || DEPLOYMENT_NETWORKS[0].label;
+const ensureDeploymentNetwork = (network?: NetworkValue): DeploymentNetworkId => {
+    if (!network) {
+        return DEFAULT_DEPLOYMENT_NETWORK;
+    }
+
+    if (typeof network === "string") {
+        const match = findDeploymentNetworkMatch(network);
+        return (match?.id as DeploymentNetworkId) || DEFAULT_DEPLOYMENT_NETWORK;
+    }
+
+    if (typeof network === "object") {
+        if (network.name) {
+            const match = findDeploymentNetworkMatch(network.name);
+            if (match) {
+                return match.id;
+            }
+        }
+
+        if (network.chainId) {
+            const match = DEPLOYMENT_NETWORKS.find((n) => n.chainId === network.chainId);
+            if (match) {
+                return match.id;
+            }
+        }
+    }
+
+    return DEFAULT_DEPLOYMENT_NETWORK;
+};
+
+const getNetworkLabel = (network?: NetworkValue) => {
+    if (!network) {
+        return DEPLOYMENT_NETWORKS[0].label;
+    }
+
+    if (typeof network === "string") {
+        const match = findDeploymentNetworkMatch(network);
+        return match?.label || network;
+    }
+
+    if (typeof network === "object") {
+        if (network.name && network.chainId) {
+            return `${network.name} (Chain ID ${network.chainId})`;
+        }
+        if (network.name) {
+            return network.name;
+        }
+        if (network.chainId) {
+            const match = DEPLOYMENT_NETWORKS.find((n) => n.chainId === network.chainId);
+            if (match) {
+                return match.label;
+            }
+            return `Chain ID ${network.chainId}`;
+        }
+    }
+
+    return "Custom Network";
 };
 
 function buildDesignSection(
@@ -645,7 +711,7 @@ export default function ProjectEditorPage() {
             toast.success("Deployment Successful", {
                 description: project.deployedAddress
                     ? `Contract deployed to ${getNetworkLabel(
-                          project.deployedNetwork || selectedNetwork
+                          project.deployedNetwork ?? selectedNetwork
                       )} at ${project.deployedAddress}`
                     : "Contract deployment completed.",
             });
@@ -2141,7 +2207,7 @@ export default function ProjectEditorPage() {
                                             className="bg-input"
                                         />
                                         <Badge variant="outline" className="text-[10px] px-2 py-0.5">
-                                            {project.deployedNetwork || "base-sepolia"}
+                                            {getNetworkLabel(project.deployedNetwork ?? selectedNetwork)}
                                         </Badge>
                                     </div>
                                 </div>
