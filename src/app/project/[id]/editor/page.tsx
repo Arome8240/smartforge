@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { StructEditor, MappingEditor, ConstructorEditor } from "@/components/contract-editor";
 import type { Struct, Mapping, Constructor } from "@/schemas/contract.schema";
-import { useProject, useUpdateProject, useDeployProject } from "@/hooks/use-projects";
+import { useProject, useUpdateProject, useDeployProject, useVerifyProject } from "@/hooks/use-projects";
 import { DeployDialog } from "@/components/deploy-dialog";
 import { CONTRACT_TEMPLATES } from "@/lib/contract-templates";
 import { createPrivyApiClient } from "@/lib/privy-api";
@@ -218,6 +218,32 @@ const getNetworkLabel = (network?: NetworkValue) => {
     }
 
     return "Custom Network";
+};
+
+const getNetworkChainId = (network?: NetworkValue): number | undefined => {
+    if (!network) {
+        return undefined;
+    }
+
+    if (typeof network === "string") {
+        if (network === "base-mainnet") return 8453;
+        if (network === "base-sepolia") return 84532;
+        return undefined;
+    }
+
+    return network.chainId;
+};
+
+const getBaseScanAddressUrl = (address?: string, network?: NetworkValue): string | null => {
+    const chainId = getNetworkChainId(network);
+    if (!address || !chainId) return null;
+    if (chainId === 84532) {
+        return `https://sepolia.basescan.org/address/${address}`;
+    }
+    if (chainId === 8453) {
+        return `https://basescan.org/address/${address}`;
+    }
+    return null;
 };
 
 function buildDesignSection(
@@ -485,6 +511,7 @@ export default function ProjectEditorPage() {
     const { data: project, isLoading } = useProject(projectId);
     const updateProject = useUpdateProject();
     const deployProject = useDeployProject();
+    const verifyProject = useVerifyProject();
     const { getAccessToken } = usePrivy();
     const apiClient = useMemo(() => createPrivyApiClient(getAccessToken), [getAccessToken]);
 
@@ -591,6 +618,29 @@ export default function ProjectEditorPage() {
         );
     }, [designStructs, designMappings, designFunctions, designConstructor, designEvents]);
 
+    const deployedChainId = project ? getNetworkChainId(project.deployedNetwork) : undefined;
+    const isBaseScanSupported = deployedChainId === 8453 || deployedChainId === 84532;
+    const deployedExplorerUrl = project
+        ? getBaseScanAddressUrl(project.deployedAddress, project.deployedNetwork)
+        : null;
+    const verificationStatus = project?.verificationStatus;
+    const verificationBadgeVariant =
+        verificationStatus === "success"
+            ? "default"
+            : verificationStatus === "failed"
+              ? "destructive"
+              : verificationStatus === "pending"
+                ? "secondary"
+                : "outline";
+    const verificationBadgeLabel =
+        verificationStatus === "success"
+            ? "Verified"
+            : verificationStatus === "failed"
+              ? "Failed"
+              : verificationStatus === "pending"
+                ? "Pending"
+                : "Not started";
+
     const handleNetworkChange = async (value: DeploymentNetworkId) => {
         if (!project) return;
 
@@ -683,7 +733,6 @@ export default function ProjectEditorPage() {
 
     const handleDeploy = async (deploymentData: {
         networkConfig: { name: string; chainId: number; rpcUrl: string };
-        privateKey: string;
     }) => {
         if (!project) return;
 
@@ -691,7 +740,6 @@ export default function ProjectEditorPage() {
             await deployProject.mutateAsync({
                 id: project._id,
                 networkConfig: deploymentData.networkConfig,
-                privateKey: deploymentData.privateKey,
             });
             toast.success("Deployment Started", {
                 description: `Deploying your contract to ${deploymentData.networkConfig.name}. We'll notify you once it completes.`,
@@ -700,6 +748,27 @@ export default function ProjectEditorPage() {
         } catch (error) {
             toast.error("Deployment Failed", {
                 description: "Failed to deploy contract. Please try again.",
+            });
+        }
+    };
+
+    const handleVerifyContract = async () => {
+        if (!project) return;
+        if (!isBaseScanSupported) {
+            toast.error("Unsupported network", {
+                description: "Contract verification is currently limited to Base networks.",
+            });
+            return;
+        }
+
+        try {
+            await verifyProject.mutateAsync(project._id);
+            toast.success("Verification submitted", {
+                description: "BaseScan is verifying your source. Status updates will appear below.",
+            });
+        } catch (error: any) {
+            toast.error("Verification failed", {
+                description: error?.response?.data?.error || error?.message || "Unable to start verification.",
             });
         }
     };
@@ -2236,6 +2305,50 @@ export default function ProjectEditorPage() {
                                                 Copy
                                             </Button>
                                         </div>
+                                        {deployedExplorerUrl && (
+                                            <Button asChild variant="link" size="sm" className="px-0 h-auto text-sm">
+                                                <a href={deployedExplorerUrl} target="_blank" rel="noreferrer">
+                                                    View on BaseScan
+                                                </a>
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
+                                {project.deploymentStatus === "deployed" && (
+                                    <div className="space-y-2">
+                                        <Label>Contract Verification</Label>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Badge
+                                                variant={verificationBadgeVariant}
+                                                className="text-[10px] px-2 py-0.5"
+                                            >
+                                                {verificationBadgeLabel}
+                                            </Badge>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={handleVerifyContract}
+                                                disabled={
+                                                    verifyProject.isPending ||
+                                                    verificationStatus === "pending" ||
+                                                    !isBaseScanSupported
+                                                }
+                                                className="text-xs"
+                                            >
+                                                {verifyProject.isPending ? "Submitting..." : "Verify on BaseScan"}
+                                            </Button>
+                                            {!isBaseScanSupported && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    Verification currently supports Base networks.
+                                                </span>
+                                            )}
+                                        </div>
+                                        {project.verificationMessage && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {project.verificationMessage}
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                                 {project.abi && Array.isArray(project.abi) && project.abi.length > 0 && (
