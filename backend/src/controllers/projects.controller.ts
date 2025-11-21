@@ -141,6 +141,72 @@ export async function deleteProject(req: AuthRequest, res: Response) {
     }
 }
 
+export async function compileProject(req: AuthRequest, res: Response) {
+    try {
+        const { id } = req.params;
+        const walletAddress = req.user!.walletAddress;
+
+        const project = await Project.findOne({ _id: id, owner: walletAddress });
+        if (!project) {
+            return res.status(404).json({ error: "Project not found" });
+        }
+
+        if (!project.sourceCode) {
+            return res.status(400).json({ error: "Project has no source code" });
+        }
+
+        const { abi, bytecode, contractName } = compileSolidity(project.sourceCode);
+
+        res.json({
+            abi,
+            bytecode,
+            contractName,
+        });
+    } catch (error: any) {
+        log.error(`Compile project error: ${error.message || error}`);
+        res.status(500).json({ error: error.message || "Failed to compile project" });
+    }
+}
+
+export async function recordDeployment(req: AuthRequest, res: Response) {
+    try {
+        const { id } = req.params;
+        const walletAddress = req.user!.walletAddress;
+        const { address, txHash, networkConfig } = req.body;
+
+        if (!address || !txHash || !networkConfig) {
+            return res.status(400).json({ error: "Missing deployment data" });
+        }
+
+        const project = await Project.findOne({ _id: id, owner: walletAddress });
+        if (!project) {
+            return res.status(404).json({ error: "Project not found" });
+        }
+
+        // Compile to get ABI
+        const { abi } = compileSolidity(project.sourceCode || "");
+
+        project.deploymentStatus = "deployed";
+        project.deployedAddress = address;
+        project.deployedNetwork = {
+            name: networkConfig.name,
+            chainId: networkConfig.chainId,
+        };
+        project.abi = abi;
+        project.targetNetwork = networkConfig;
+        await project.save();
+
+        log.success(
+            `Project ${project._id} deployed to ${networkConfig.name} (Chain ID: ${networkConfig.chainId}) at ${address} (tx: ${txHash})`
+        );
+
+        res.json({ message: "Deployment recorded", project });
+    } catch (error: any) {
+        log.error(`Record deployment error: ${error.message || error}`);
+        res.status(500).json({ error: error.message || "Failed to record deployment" });
+    }
+}
+
 export async function deployProject(req: AuthRequest, res: Response) {
     try {
         const { id } = req.params;
@@ -227,18 +293,44 @@ export async function verifyProjectContract(req: AuthRequest, res: Response) {
 
         const deployedNetwork = project.deployedNetwork as { chainId?: number; name?: string } | string | undefined;
 
-        const chainId =
-            typeof deployedNetwork === "object"
-                ? deployedNetwork?.chainId
-                : deployedNetwork === "base-mainnet"
-                  ? 8453
-                  : deployedNetwork === "base-sepolia"
-                    ? 84532
-                    : undefined;
+        log.info(`Verifying contract for project ${project._id}. Deployed network: ${JSON.stringify(deployedNetwork)}`);
 
-        if (!chainId || ![8453, 84532].includes(chainId)) {
+        if (!deployedNetwork) {
+            log.error(`No deployed network information found for project ${project._id}`);
             return res.status(400).json({
-                error: "Verification is currently supported only for Base networks.",
+                error: "No network information found. Please redeploy the contract.",
+            });
+        }
+
+        let chainId: number | undefined;
+
+        if (typeof deployedNetwork === "object" && deployedNetwork?.chainId) {
+            chainId = deployedNetwork.chainId;
+            log.info(`Extracted chainId from object: ${chainId}`);
+        } else if (typeof deployedNetwork === "string") {
+            const networkName = deployedNetwork.toLowerCase();
+            log.info(`Deployed network is string: ${networkName}`);
+            if (networkName.includes("base") && networkName.includes("mainnet")) {
+                chainId = 8453;
+            } else if (networkName.includes("base") && networkName.includes("sepolia")) {
+                chainId = 84532;
+            }
+        }
+
+        if (!chainId) {
+            log.error(
+                `Unable to determine chainId. deployedNetwork type: ${typeof deployedNetwork}, value: ${JSON.stringify(deployedNetwork)}`
+            );
+            return res.status(400).json({
+                error: `Unable to determine chain ID from deployed network. Network info: ${JSON.stringify(deployedNetwork)}`,
+            });
+        }
+
+        log.info(`Chain ID determined: ${chainId}`);
+
+        if (![8453, 84532].includes(chainId)) {
+            return res.status(400).json({
+                error: `Verification is currently supported only for Base networks. Current chain ID: ${chainId}`,
             });
         }
 

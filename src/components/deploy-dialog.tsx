@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useWallets } from "@privy-io/react-auth";
+import { usePrivyApiClient } from "@/lib/privy-api";
+import { deployContractClientSide } from "@/lib/client-deploy";
+import { toast } from "sonner";
 import {
     Dialog,
     DialogContent,
@@ -19,23 +23,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Rocket, Loader2 } from "lucide-react";
 
-// Common EVM networks
+// Base networks only
 const PRESET_NETWORKS = [
-    { name: "Ethereum Mainnet", chainId: 1, rpcUrl: "https://eth.llamarpc.com" },
-    { name: "Ethereum Sepolia", chainId: 11155111, rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com" },
-    { name: "Polygon Mainnet", chainId: 137, rpcUrl: "https://polygon-rpc.com" },
-    { name: "Polygon Amoy", chainId: 80002, rpcUrl: "https://rpc-amoy.polygon.technology" },
-    { name: "BSC Mainnet", chainId: 56, rpcUrl: "https://bsc-dataseed.binance.org" },
-    { name: "BSC Testnet", chainId: 97, rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545" },
-    { name: "Arbitrum One", chainId: 42161, rpcUrl: "https://arb1.arbitrum.io/rpc" },
-    { name: "Arbitrum Sepolia", chainId: 421614, rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc" },
-    { name: "Optimism Mainnet", chainId: 10, rpcUrl: "https://mainnet.optimism.io" },
-    { name: "Optimism Sepolia", chainId: 11155420, rpcUrl: "https://sepolia.optimism.io" },
-    { name: "Base Mainnet", chainId: 8453, rpcUrl: "https://mainnet.base.org" },
     { name: "Base Sepolia", chainId: 84532, rpcUrl: "https://sepolia.base.org" },
-    { name: "Avalanche C-Chain", chainId: 43114, rpcUrl: "https://api.avax.network/ext/bc/C/rpc" },
-    { name: "Avalanche Fuji", chainId: 43113, rpcUrl: "https://api.avax-test.network/ext/bc/C/rpc" },
-    { name: "Custom", chainId: 0, rpcUrl: "" },
+    { name: "Base Mainnet", chainId: 8453, rpcUrl: "https://mainnet.base.org" },
 ];
 
 const deploymentSchema = z.object({
@@ -49,14 +40,16 @@ type DeploymentFormData = z.infer<typeof deploymentSchema>;
 
 interface DeployDialogProps {
     projectId: string;
-    onDeploy: (data: { networkConfig: { name: string; chainId: number; rpcUrl: string } }) => Promise<void>;
-    isDeploying?: boolean;
+    onSuccess?: () => void;
     trigger?: React.ReactNode;
 }
 
-export function DeployDialog({ projectId, onDeploy, isDeploying = false, trigger }: DeployDialogProps) {
+export function DeployDialog({ projectId, onSuccess, trigger }: DeployDialogProps) {
     const [open, setOpen] = useState(false);
     const [isCustomNetwork, setIsCustomNetwork] = useState(false);
+    const [isDeploying, setIsDeploying] = useState(false);
+    const { wallets } = useWallets();
+    const apiClient = usePrivyApiClient();
 
     const form = useForm<DeploymentFormData>({
         resolver: zodResolver(deploymentSchema),
@@ -71,32 +64,88 @@ export function DeployDialog({ projectId, onDeploy, isDeploying = false, trigger
     const handleNetworkChange = (value: string) => {
         const preset = PRESET_NETWORKS.find((n) => n.name === value);
         if (preset) {
-            setIsCustomNetwork(value === "Custom");
-            if (value !== "Custom") {
-                form.setValue("networkName", preset.name);
-                form.setValue("chainId", preset.chainId);
-                form.setValue("rpcUrl", preset.rpcUrl);
-            } else {
-                form.setValue("networkName", "");
-                form.setValue("chainId", 1);
-                form.setValue("rpcUrl", "");
-            }
+            form.setValue("networkName", preset.name);
+            form.setValue("chainId", preset.chainId);
+            form.setValue("rpcUrl", preset.rpcUrl);
         }
     };
 
     const onSubmit = async (data: DeploymentFormData) => {
+        setIsDeploying(true);
         try {
-            await onDeploy({
+            // Get the user's embedded wallet
+            const embeddedWallet = wallets.find((wallet) => wallet.walletClientType === "privy");
+            if (!embeddedWallet) {
+                toast.error("Wallet not found", {
+                    description: "Please ensure your Privy wallet is connected.",
+                });
+                return;
+            }
+
+            // Get the EIP-1193 provider from the wallet
+            const provider = await embeddedWallet.getEthereumProvider();
+
+            // Switch to the correct network if needed
+            try {
+                await embeddedWallet.switchChain(data.chainId);
+                toast.info("Switched network", {
+                    description: `Connected to ${data.networkName}`,
+                });
+            } catch (switchError: any) {
+                console.error("Network switch error:", switchError);
+                // If network doesn't exist, try to add it
+                if (switchError.code === 4902 || switchError.message?.includes("Unrecognized chain")) {
+                    toast.error("Network not available", {
+                        description: `Unable to switch to ${data.networkName}. Please add this network to your wallet first.`,
+                    });
+                    return;
+                }
+                throw switchError;
+            }
+
+            // Step 1: Get compiled contract from backend
+            toast.info("Compiling contract...");
+            const compileResponse = await apiClient.get(`/projects/${projectId}/compile`);
+            const { abi, bytecode, contractName } = compileResponse.data;
+
+            // Step 2: Deploy using client's wallet
+            toast.info("Deploying contract...", {
+                description: "Please confirm the transaction in your wallet.",
+            });
+            
+            const { address, txHash } = await deployContractClientSide({
+                bytecode,
+                abi,
+                chainId: data.chainId,
+                rpcUrl: data.rpcUrl,
+                provider,
+            });
+
+            // Step 3: Record deployment on backend
+            await apiClient.post(`/projects/${projectId}/record-deployment`, {
+                address,
+                txHash,
                 networkConfig: {
                     name: data.networkName,
                     chainId: data.chainId,
                     rpcUrl: data.rpcUrl,
                 },
             });
+
+            toast.success("Contract deployed!", {
+                description: `Deployed to ${address} on ${data.networkName}`,
+            });
+
             setOpen(false);
             form.reset();
-        } catch (error) {
+            onSuccess?.();
+        } catch (error: any) {
             console.error("Deployment failed:", error);
+            toast.error("Deployment failed", {
+                description: error?.message || "Failed to deploy contract. Please try again.",
+            });
+        } finally {
+            setIsDeploying(false);
         }
     };
 
@@ -112,10 +161,10 @@ export function DeployDialog({ projectId, onDeploy, isDeploying = false, trigger
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Deploy to EVM Network</DialogTitle>
+                    <DialogTitle>Deploy to Base Network</DialogTitle>
                     <DialogDescription>
-                        Configure the RPC you want to use for deployment. Smartforge will deploy via your Privy linked
-                        wallet—no private key sharing needed.
+                        Deploy your contract to Base Mainnet or Base Sepolia testnet. The contract will be deployed
+                        from your Privy wallet—no private key sharing needed.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -143,67 +192,18 @@ export function DeployDialog({ projectId, onDeploy, isDeploying = false, trigger
                                         <SelectContent>
                                             {PRESET_NETWORKS.map((network) => (
                                                 <SelectItem key={network.name} value={network.name}>
-                                                    {network.name}
+                                                    {network.name} (Chain ID: {network.chainId})
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                     <FormDescription>
-                                        Choose a preset network or select Custom to configure your own
+                                        Choose Base Mainnet for production or Base Sepolia for testing
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
-
-                        {/* Custom Network Configuration */}
-                        {isCustomNetwork && (
-                            <>
-                                <FormField
-                                    control={form.control}
-                                    name="networkName"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Network Name</FormLabel>
-                                            <FormControl>
-                                                <Input placeholder="My Custom Network" {...field} />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                <FormField
-                                    control={form.control}
-                                    name="chainId"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Chain ID</FormLabel>
-                                            <FormControl>
-                                                <Input type="number" placeholder="1" {...field} />
-                                            </FormControl>
-                                            <FormDescription>The chain ID of your network</FormDescription>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                <FormField
-                                    control={form.control}
-                                    name="rpcUrl"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>RPC URL</FormLabel>
-                                            <FormControl>
-                                                <Input placeholder="https://rpc.example.com" {...field} />
-                                            </FormControl>
-                                            <FormDescription>The RPC endpoint for your network</FormDescription>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </>
-                        )}
 
                         <DialogFooter>
                             <Button

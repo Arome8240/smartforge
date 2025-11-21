@@ -897,8 +897,10 @@ export default function ProjectEditorPage() {
                             </Button>
                             <DeployDialog
                                 projectId={project._id}
-                                onDeploy={handleDeploy}
-                                isDeploying={deployProject.isPending}
+                                onSuccess={() => {
+                                    // Refresh project data after successful deployment
+                                    refetch();
+                                }}
                             />
                         </div>
                     </div>

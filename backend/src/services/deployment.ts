@@ -26,8 +26,6 @@ export async function deployToEVMNetwork(params: DeploymentParams) {
 
     const walletAddress = ownerAddress;
 
-    //console.log("Wallet address:", walletAddress, ownerAddress);
-
     if (!walletAddress || !walletAddress.startsWith("0x")) {
         throw new Error("Invalid owner address on project");
     }
@@ -47,14 +45,10 @@ export async function deployToEVMNetwork(params: DeploymentParams) {
     log.info(`Compiling contract for deployment to ${networkConfig.name}...`);
     const { abi, bytecode, contractName } = compileSolidity(sourceCode);
 
-    //console.log("Compiled contract:", networkConfig);
-
     const provider = new JsonRpcProvider(networkConfig.rpcUrl, {
         chainId: networkConfig.chainId,
         name: networkConfig.name,
     });
-
-    console.log("Provider network:", await provider.getNetwork());
 
     const factory = new ContractFactory(abi, bytecode);
     const deployTx = await factory.getDeployTransaction();
@@ -66,40 +60,19 @@ export async function deployToEVMNetwork(params: DeploymentParams) {
     });
     const feeData = await provider.getFeeData();
 
-    console.log("Privy token:", privyToken);
-
     const auth = await privyClient.utils().auth().verifyAuthToken(privyToken);
 
     if (!auth) {
         throw new Error("Failed to authenticate Privy wallet for deployment");
     }
 
-    console.log("Auth data:", auth);
-
-    const authorizationKey = "authorization_key" in auth ? auth.authorization_key : undefined;
-
-    if (!authorizationKey) {
-        throw new Error("Unable to authorize Privy wallet for deployment");
-    }
-
-    // const wallet =
-    //     auth.wallets.find(
-    //         (w) => w.chain_type === "ethereum" && w.address?.toLowerCase() === walletAddress.toLowerCase()
-    //     ) || auth.wallets.find((w) => w.chain_type === "ethereum");
-
     const user = await privyClient.users()._get(auth.user_id);
 
-    const walletAccount = user.linked_accounts?.find((acc: any) => acc.address || acc.type === "wallet");
-    console.log("Wallet account:", walletAccount);
-    if (!walletAddress) {
-        throw new Error("No Ethereum wallet linked to this Privy account");
+    const walletId = user.linked_accounts.find((account) => account.type === "wallet" && "id" in account)?.id;
+
+    if (!walletId) {
+        throw new Error("No wallet ID found for user");
     }
-
-    //const walletAddres = (user as any)?..linked_accounts[1];
-
-    log.info(
-        `Deploying contract ${contractName} from ${walletAddress} on ${networkConfig.name} (Chain ID: ${networkConfig.chainId})...`
-    );
 
     const transaction = {
         chain_id: networkConfig.chainId,
@@ -111,11 +84,14 @@ export async function deployToEVMNetwork(params: DeploymentParams) {
         value: "0x0",
     };
 
-    const response = await privyClient.wallets()._rpc(user.id, {
+    log.info(
+        `Deploying contract ${contractName} from ${walletAddress} on ${networkConfig.name} (Chain ID: ${networkConfig.chainId})...`
+    );
+
+    const response = await privyClient.wallets()._rpc(walletId, {
         method: "eth_sendTransaction",
         caip2: `eip155:${networkConfig.chainId}`,
         params: { transaction },
-        //"privy-authorization-signature": { authorizationKey : { authorizationKey } },
     });
 
     const txHash = (response.data as any)?.hash || (response.data as any)?.transaction_request?.hash || "";
@@ -137,7 +113,7 @@ export async function deployToEVMNetwork(params: DeploymentParams) {
 
         if (typeof anyInstance.transferOwnership === "function") {
             log.info(`Transferring ownership of ${contractName} at ${address} to ${walletAddress}...`);
-            await privyClient.wallets()._rpc(user.id, {
+            await privyClient.wallets()._rpc(walletId, {
                 method: "eth_sendTransaction",
                 caip2: `eip155:${networkConfig.chainId}`,
                 params: {
@@ -149,7 +125,6 @@ export async function deployToEVMNetwork(params: DeploymentParams) {
                         gas_limit: toHex(BigInt(150000)),
                     },
                 },
-                // "privy-authorization-signature": authorizationKey,
             });
             log.success(`Ownership transferred to ${walletAddress}`);
         }
