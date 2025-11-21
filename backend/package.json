@@ -1,32 +1,37 @@
 {
-  "name": "smartforge-backend",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "nodemon --exec tsx src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js"
-  },
-  "dependencies": {
-    "@privy-io/node": "^0.5.0",
-    "@privy-io/server-auth": "^1.32.5",
-    "chalk": "^5.6.2",
-    "cors": "*",
-    "dotenv": "*",
-    "express": "*",
-    "mongoose": "*",
-    "morgan": "^1.10.1",
-    "zod": "*",
-    "ethers": "^6.13.1",
-    "solc": "^0.8.26"
-  },
-  "devDependencies": {
-    "@types/cors": "*",
-    "@types/express": "*",
-    "@types/morgan": "^1.9.10",
-    "@types/node": "*",
-    "nodemon": "^3.1.11",
-    "tsx": "*",
-    "typescript": "*"
-  }
+    "name": "smartforge-backend",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "nodemon --exec tsx src/server.ts",
+        "build": "tsc",
+        "start": "node dist/server.js"
+    },
+    "dependencies": {
+        "@chainlink/contracts": "^1.5.0",
+        "@google/generative-ai": "^0.24.1",
+        "@openzeppelin/contracts": "^5.0.2",
+        "@privy-io/node": "^0.5.0",
+        "@privy-io/server-auth": "^1.32.5",
+        "axios": "^1.7.9",
+        "chalk": "^5.6.2",
+        "cors": "*",
+        "dotenv": "*",
+        "ethers": "^6.15.0",
+        "express": "*",
+        "mongoose": "*",
+        "morgan": "^1.10.1",
+        "solc": "^0.8.26",
+        "sync-request": "^6.1.0",
+        "zod": "*"
+    },
+    "devDependencies": {
+        "@types/cors": "*",
+        "@types/express": "*",
+        "@types/morgan": "^1.9.10",
+        "@types/node": "*",
+        "nodemon": "^3.1.11",
+        "tsx": "*",
+        "typescript": "*"
+    }
 }
