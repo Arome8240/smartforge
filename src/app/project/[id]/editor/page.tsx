@@ -899,7 +899,7 @@ export default function ProjectEditorPage() {
                                 projectId={project._id}
                                 onSuccess={() => {
                                     // Refresh project data after successful deployment
-                                    refetch();
+                                    // refetch();
                                 }}
                             />
                         </div>
