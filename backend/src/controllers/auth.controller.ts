@@ -37,7 +37,9 @@ export async function login(req: Request, res: Response) {
         }
 
         // 4. Check if user exists in database, create if not
-        let user = await User.findOne({ walletAddress });
+        let user = await User.findOne({
+            $or: [{ walletAddress }, { privyUserId: claims.user_id }],
+        });
 
         if (!user) {
             // Create new user
@@ -48,9 +50,20 @@ export async function login(req: Request, res: Response) {
             });
             log.info(`Created new user with wallet: ${walletAddress}`);
         } else {
-            // Update privyUserId if it changed
+            // Update missing fields if necessary
+            let updated = false;
+
+            if (!user.walletAddress && walletAddress) {
+                user.walletAddress = walletAddress;
+                updated = true;
+            }
+
             if (user.privyUserId !== claims.user_id) {
                 user.privyUserId = claims.user_id;
+                updated = true;
+            }
+
+            if (updated) {
                 await user.save();
             }
         }
