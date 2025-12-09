@@ -368,7 +368,19 @@ export function SolidityEditor({
     };
 
     const handleEditorChange = (value: string | undefined) => {
-        onChange(value || "");
+        const code = value || "";
+
+        // Enforce a single constructor definition
+        if (onCompilationErrors) {
+            const constructorMatches = code.match(/\bconstructor\s*\(/g) || [];
+            if (constructorMatches.length > 1) {
+                onCompilationErrors([{ message: "Only one constructor is allowed in a contract." }]);
+            } else {
+                onCompilationErrors([]);
+            }
+        }
+
+        onChange(code);
     };
 
     useEffect(() => {
