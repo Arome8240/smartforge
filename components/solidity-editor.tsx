@@ -331,18 +331,28 @@ export function SolidityEditor({
             // Add autocomplete for Solidity
             monacoInstance.languages.registerCompletionItemProvider("solidity", {
                 provideCompletionItems: (model, position) => {
-                    const suggestions = [
+                    const word = model.getWordUntilPosition(position);
+                    const range: monaco.IRange = {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn,
+                        endColumn: word.endColumn,
+                    };
+
+                    const suggestions: monaco.languages.CompletionItem[] = [
                         ...["pragma", "contract", "function", "modifier", "event", "struct", "enum", "mapping"].map(
                             (keyword) => ({
                                 label: keyword,
                                 kind: monacoInstance.languages.CompletionItemKind.Keyword,
                                 insertText: keyword,
+                                range,
                             })
                         ),
                         ...["address", "uint256", "string", "bool", "bytes32"].map((type) => ({
                             label: type,
                             kind: monacoInstance.languages.CompletionItemKind.TypeParameter,
                             insertText: type,
+                            range,
                         })),
                     ];
 
