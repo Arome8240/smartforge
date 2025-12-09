@@ -285,16 +285,16 @@ function buildDesignSection(
         lines.push("");
     }
 
-    if (ctor) {
-        lines.push("// Constructor generated from designer");
-        const params = (ctor.parameters || []).map((p) => `${p.type} ${p.name}`).join(", ");
-        const visibility = ctor.visibility || "public";
-        const payable = ctor.isPayable ? "payable " : "";
-        lines.push(`constructor(${params}) ${visibility} ${payable}{`);
-        lines.push("    // TODO: add constructor logic");
-        lines.push("}");
-        lines.push("");
-    }
+    // if (ctor) {
+    //     lines.push("// Constructor generated from designer");
+    //     const params = (ctor.parameters || []).map((p) => `${p.type} ${p.name}`).join(", ");
+    //     const visibility = ctor.visibility || "public";
+    //     const payable = ctor.isPayable ? "payable " : "";
+    //     lines.push(`constructor(${params}) ${visibility} ${payable}{`);
+    //     lines.push("    // TODO: add constructor logic");
+    //     lines.push("}");
+    //     lines.push("");
+    // }
 
     if (events.length > 0) {
         lines.push("// Events generated from designer");
